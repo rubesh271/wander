@@ -9,7 +9,17 @@ import {
   SearchFilterBar, MapModal, AttachmentField, AttachmentChips, InlineEditWrapper
 } from './components/ui.jsx';
 import { fmt, nights, matchesSearch, catStyle, OTHER_DOC_CATEGORIES, fileToBase64, avatarColor, initials, pushToSheet, deleteFromSheet, setupSheet, APPS_SCRIPT_CODE } from './utils.js';
+import SharedView from './SharedView.jsx';
 import './index.css';
+
+// Detect shared view mode — URL has ?sheet=SPREADSHEET_ID
+const urlParams = new URLSearchParams(window.location.search);
+const SHARED_SHEET_ID = urlParams.get('sheet');
+
+// If shared mode, render SharedView immediately — don't load the full app
+if (SHARED_SHEET_ID) {
+  // Dynamically swap root render — handled in main.jsx via App export
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DAYS VIEW
@@ -850,6 +860,39 @@ function TripsView({ trips, days, docs, stays, onSelect, onAdd }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SHARE LINK BOX
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ShareLinkBox({ sheetId }) {
+  const [copied, setCopied] = useState(false);
+  const base = window.location.origin + window.location.pathname;
+  const shareUrl = `${base}?sheet=${sheetId}`;
+
+  function copy() {
+    navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  }
+
+  return (
+    <div style={{ background:'var(--teal-light)', border:'1px solid rgba(26,122,94,0.2)', borderRadius:'var(--radius)', padding:'14px 16px' }}>
+      <div style={{ fontSize:12, color:'var(--teal)', marginBottom:8, fontWeight:500 }}>Your share link:</div>
+      <div style={{ display:'flex', gap:8 }}>
+        <input
+          readOnly value={shareUrl}
+          style={{ flex:1, padding:'8px 10px', fontSize:11, fontFamily:'var(--font-mono)', border:'1px solid rgba(26,122,94,0.3)', borderRadius:'var(--radius)', background:'white', color:'var(--ink-mid)', outline:'none' }}
+          onClick={e => e.target.select()}
+        />
+        <button className="btn btn-teal btn-sm" onClick={copy}>{copied ? '✓ Copied!' : 'Copy link'}</button>
+      </div>
+      <div style={{ fontSize:11, color:'var(--teal)', marginTop:8, opacity:0.8 }}>
+        Anyone with this link can view your trips. They cannot edit anything. Make sure your Google Sheet is published to the web (File → Share → Publish to web).
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -925,6 +968,13 @@ function SettingsView({ sheetsId, scriptUrl, onSave, onSetupSheet }) {
               {setupDone && <div style={{ marginTop:10, padding:'12px 14px', background:'var(--teal-light)', borderRadius:'var(--radius)', fontSize:13, color:'var(--teal)', lineHeight:1.6 }}>
                 ✓ Done! Your sheet now has 7 tabs ready: Trips, Days, Documents, Stays, Places, Personnels, OtherDocs. Everything you add or edit in the app will now appear in your Sheet instantly.
               </div>}
+            </>}
+
+            {id && <>
+              <div style={{ height:1, background:'var(--border)', margin:'20px 0' }}/>
+              <h2>🔗 Share your trips (view only)</h2>
+              <p>Send this link to friends or travel companions. They can browse all your trips, itineraries, stays and tickets — but cannot edit anything.</p>
+              <ShareLinkBox sheetId={id}/>
             </>}
 
             <div style={{ height:1, background:'var(--border)', margin:'20px 0' }}/>
