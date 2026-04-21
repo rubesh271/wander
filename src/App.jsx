@@ -8,7 +8,7 @@ import {
   Modal, Field, Avatar, StatusBadge, TypeBadge, CategoryBadge,
   SearchFilterBar, MapModal, AttachmentField, AttachmentChips, InlineEditWrapper
 } from './components/ui.jsx';
-import { fmt, nights, matchesSearch, catStyle, OTHER_DOC_CATEGORIES, fileToBase64, avatarColor, initials } from './utils.js';
+import { fmt, nights, matchesSearch, catStyle, OTHER_DOC_CATEGORIES, fileToBase64, avatarColor, initials, pushToSheet, deleteFromSheet, setupSheet, APPS_SCRIPT_CODE } from './utils.js';
 import './index.css';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -246,25 +246,41 @@ function TravelDocRow({ doc, persons, onSave, onDelete }) {
   const s = k => e => setDraft(p=>({...p,[k]:e.target.value}));
   const personIdx = persons.findIndex(p=>p.name===doc.belongsTo);
 
+  async function handleFile(e) {
+    const file = e.target.files[0]; if (!file) return;
+    const data = await fileToBase64(file);
+    setDraft(p=>({...p, fileData:data, fileLabel:file.name}));
+  }
+
   if (editing) {
     return (
       <tr className="table-row-editing">
-        <td><input className="table-input" value={draft.name||''} onChange={s('name')}/><br/><select className="table-select" style={{marginTop:4}} value={draft.type||'Flight'} onChange={s('type')}>{['Flight','Train','Bus','Ferry','Visa','Pass','Other'].map(t=><option key={t}>{t}</option>)}</select></td>
-        <td><input className="table-input" type="date" value={draft.date||''} onChange={s('date')}/><input className="table-input" style={{marginTop:4}} type="time" value={draft.time||''} onChange={s('time')}/></td>
-        <td><input className="table-input" value={draft.fromTo||''} onChange={s('fromTo')}/></td>
-        <td><input className="table-input" value={draft.ref||''} onChange={s('ref')}/></td>
-        <td>
-          <select className="table-select" value={draft.belongsTo||''} onChange={s('belongsTo')}>
-            <option value="">Everyone</option>
-            {persons.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
-          </select>
-        </td>
-        <td><input className="table-input" value={draft.cost||''} onChange={s('cost')}/></td>
-        <td>
-          <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-            <button className="btn btn-teal btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={()=>{onSave(draft);setEditing(false);}}>✓</button>
-            <button className="btn btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={()=>setEditing(false)}>✕</button>
-            <button className="btn btn-sm card-delete-btn" style={{fontSize:11,padding:'3px 8px'}} onClick={onDelete}>🗑</button>
+        <td colSpan={7} style={{padding:'12px 14px'}}>
+          <div className="edit-form-grid">
+            <Field label="Name"><input className="form-input" value={draft.name||''} onChange={s('name')}/></Field>
+            <Field label="Type"><select className="form-select" value={draft.type||'Flight'} onChange={s('type')}>{['Flight','Train','Bus','Ferry','Visa','Pass','Other'].map(t=><option key={t}>{t}</option>)}</select></Field>
+            <Field label="Date"><input className="form-input" type="date" value={draft.date||''} onChange={s('date')}/></Field>
+            <Field label="Time"><input className="form-input" type="time" value={draft.time||''} onChange={s('time')}/></Field>
+            <Field label="From → To"><input className="form-input" value={draft.fromTo||''} onChange={s('fromTo')}/></Field>
+            <Field label="Operator"><input className="form-input" value={draft.operator||''} onChange={s('operator')}/></Field>
+            <Field label="Ref"><input className="form-input" value={draft.ref||''} onChange={s('ref')}/></Field>
+            <Field label="Cost"><input className="form-input" value={draft.cost||''} onChange={s('cost')}/></Field>
+            <Field label="Status"><select className="form-select" value={draft.status||'Confirmed'} onChange={s('status')}>{['Pending','Confirmed','Checked in','Used'].map(t=><option key={t}>{t}</option>)}</select></Field>
+            <Field label="Belongs to">
+              <select className="form-select" value={draft.belongsTo||''} onChange={s('belongsTo')}>
+                <option value="">Everyone</option>
+                {persons.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+              </select>
+            </Field>
+            <div className="full-width"><Field label="Seat / details"><input className="form-input" value={draft.details||''} onChange={s('details')}/></Field></div>
+          </div>
+          <div style={{marginTop:10}}>
+            <AttachmentField fileData={draft.fileData} fileLabel={draft.fileLabel} link={draft.link||''} onFileChange={handleFile} onLinkChange={v=>setDraft(p=>({...p,link:v}))}/>
+          </div>
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12 }}>
+            <button className="btn btn-sm card-delete-btn" onClick={onDelete}>🗑 Delete</button>
+            <button className="btn btn-sm" onClick={()=>setEditing(false)}>Cancel</button>
+            <button className="btn btn-teal btn-sm" onClick={()=>{onSave(draft);setEditing(false);}}>Save changes</button>
           </div>
         </td>
       </tr>
@@ -273,7 +289,13 @@ function TravelDocRow({ doc, persons, onSave, onDelete }) {
 
   return (
     <tr>
-      <td><div className="td-primary">{doc.name}</div><div style={{marginTop:3}}><TypeBadge type={doc.type}/></div></td>
+      <td>
+        <div className="td-primary">{doc.name}</div>
+        <div style={{marginTop:3,display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}}>
+          <TypeBadge type={doc.type}/>
+          <AttachmentChips fileData={doc.fileData} fileLabel={doc.fileLabel} link={doc.link}/>
+        </div>
+      </td>
       <td>{fmt(doc.date)}{doc.time?` · ${doc.time}`:''}</td>
       <td>{doc.fromTo||'—'}</td>
       <td style={{fontFamily:'var(--font-mono)',fontSize:12}}>{doc.ref||'—'}</td>
@@ -290,8 +312,13 @@ function TravelDocRow({ doc, persons, onSave, onDelete }) {
 }
 
 function AddTravelDocModal({ tripId, persons, onClose, onAdd }) {
-  const [f, setF] = useState({ name:'', type:'Flight', date:'', time:'', ref:'', fromTo:'', operator:'', details:'', cost:'', status:'Confirmed', belongsTo:'' });
+  const [f, setF] = useState({ name:'', type:'Flight', date:'', time:'', ref:'', fromTo:'', operator:'', details:'', cost:'', status:'Confirmed', belongsTo:'', link:'', fileData:'', fileLabel:'' });
   const s = k => e => setF(p=>({...p,[k]:e.target.value}));
+  async function handleFile(e) {
+    const file = e.target.files[0]; if (!file) return;
+    const data = await fileToBase64(file);
+    setF(p=>({...p, fileData:data, fileLabel:file.name}));
+  }
   return (
     <Modal title="New travel document" onClose={onClose} onSave={()=>{onAdd({...f,id:Date.now().toString(),tripId});onClose();}} wide>
       <div className="form-row">
@@ -318,6 +345,7 @@ function AddTravelDocModal({ tripId, persons, onClose, onAdd }) {
           {persons.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
         </select>
       </Field>
+      <AttachmentField fileData={f.fileData} fileLabel={f.fileLabel} link={f.link} onFileChange={handleFile} onLinkChange={v=>setF(p=>({...p,link:v}))}/>
     </Modal>
   );
 }
@@ -822,76 +850,96 @@ function TripsView({ trips, days, docs, stays, onSelect, onAdd }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SETTINGS — including Apps Script setup
+// SETTINGS
 // ─────────────────────────────────────────────────────────────────────────────
 
-const APPS_SCRIPT_CODE = `function doPost(e) {
-  const data = JSON.parse(e.postData.contents);
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(data.sheet);
-  if (!sheet) return ContentService.createTextOutput('Sheet not found');
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const row = headers.map(h => data.row[h] !== undefined ? data.row[h] : '');
-  // Update existing row if id matches, else append
-  const ids = sheet.getRange(2, 1, Math.max(sheet.getLastRow()-1,1), 1).getValues().flat();
-  const idx = ids.indexOf(String(data.row.id));
-  if (idx >= 0) {
-    sheet.getRange(idx+2, 1, 1, headers.length).setValues([row]);
-  } else {
-    sheet.appendRow(row);
-  }
-  return ContentService.createTextOutput('OK').setMimeType(ContentService.MimeType.TEXT);
-}`;
-
-function SettingsView({ sheetsId, scriptUrl, onSave }) {
+function SettingsView({ sheetsId, scriptUrl, onSave, onSetupSheet }) {
   const [id, setId] = useState(sheetsId||'');
   const [url, setUrl] = useState(scriptUrl||'');
   const [copied, setCopied] = useState(false);
-  function copy() { navigator.clipboard.writeText(APPS_SCRIPT_CODE); setCopied(true); setTimeout(()=>setCopied(false),2000); }
+  const [setupDone, setSetupDone] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  function copy() { navigator.clipboard.writeText(APPS_SCRIPT_CODE); setCopied(true); setTimeout(()=>setCopied(false),2500); }
+
+  async function handleSetup() {
+    setTesting(true);
+    await onSetupSheet();
+    setTimeout(()=>{ setSetupDone(true); setTesting(false); }, 1500);
+  }
+
   return (
     <>
-      <div className="topbar"><div className="topbar-left"><h1>Settings</h1><p>Connect Google Sheets for sync and write-back</p></div></div>
+      <div className="topbar"><div className="topbar-left"><h1>Settings</h1><p>Connect Google Sheets for full two-way sync</p></div></div>
       <div className="content-area">
         <div className="setup-wrap">
           <div className="setup-card">
-            <h2>1 — Connect Google Sheets (read)</h2>
-            <p>Your data is read from a published Google Sheet. Create 6 tabs and publish each as CSV.</p>
-            <div style={{ background:'var(--paper-warm)', borderRadius:'var(--radius)', padding:'14px 16px', fontSize:12, color:'var(--ink-mid)', lineHeight:2, marginBottom:14 }}>
-              <strong style={{ display:'block', marginBottom:4 }}>Sheet tabs & headers:</strong>
-              <div><strong>Trips:</strong> id, name, emoji, status, destinations, startDate, endDate, budget, notes</div>
-              <div><strong>Days:</strong> id, tripId, dayNumber, date, title, location, morning, afternoon, evening, transport, notes</div>
-              <div><strong>Documents:</strong> id, tripId, name, type, date, time, ref, fromTo, operator, details, cost, status, belongsTo</div>
-              <div><strong>Stays:</strong> id, tripId, name, type, checkIn, checkOut, address, mapsUrl, lat, lng, ref, cost, paid, checkInNotes, extras, belongsTo</div>
-              <div><strong>Places:</strong> id, tripId, dayId, name, time, category, mapsUrl, lat, lng, notes</div>
-              <div><strong>Personnels:</strong> id, tripId, name, role, email, phone</div>
-              <div><strong>OtherDocs:</strong> id, tripId, name, category, ref, issuedBy, expiryDate, belongsTo, notes, link</div>
-            </div>
-            <div className="form-group" style={{ marginBottom:20 }}>
-              <label className="form-label">Spreadsheet ID (from URL)</label>
-              <div className="url-input-row">
-                <input className="form-input" value={id} onChange={e=>setId(e.target.value)} placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"/>
-                <button className="btn btn-teal" onClick={()=>onSave(id,url)}>Save</button>
-              </div>
-            </div>
 
-            <h2 style={{ fontFamily:'var(--font-display)', fontSize:18, marginBottom:8, marginTop:4 }}>2 — Enable write-back (optional)</h2>
-            <p>To save changes made in the app back to your Google Sheet, paste the script below into your Sheet's Apps Script editor.</p>
+            <h2>Step 1 — Set up the Apps Script</h2>
+            <p>This script lets the app write data back to your Google Sheet automatically. You only need to do this once.</p>
             <div className="step-list">
-              {[['1','Open your Google Sheet → Extensions → Apps Script'],['2','Delete any existing code, paste the script below'],['3','Click Deploy → New deployment → Web app'],['4','Set "Who has access" to Anyone → Deploy → Copy the URL'],['5','Paste the URL below and save']].map(([n,t])=>(
+              {[
+                ['1','Open your Google Sheet → click Extensions in the top menu → Apps Script'],
+                ['2','Delete any existing code in the editor (Ctrl+A then Delete)'],
+                ['3','Click Copy script below, then paste it into the Apps Script editor'],
+                ['4','Click Save (floppy disk icon or Ctrl+S)'],
+                ['5','Click Deploy → New deployment → set type to Web app'],
+                ['6','Set "Who has access" to Anyone → click Deploy → copy the Web app URL'],
+              ].map(([n,t])=>(
                 <div key={n} className="step-item"><div className="step-num">{n}</div><div className="step-text">{t}</div></div>
               ))}
             </div>
             <div style={{ position:'relative', marginBottom:16 }}>
-              <pre style={{ background:'var(--paper-warm)', borderRadius:'var(--radius)', padding:'14px', fontSize:11, fontFamily:'var(--font-mono)', overflowX:'auto', lineHeight:1.6, color:'var(--ink-mid)', maxHeight:200, whiteSpace:'pre-wrap' }}>{APPS_SCRIPT_CODE}</pre>
-              <button className="btn btn-sm" style={{ position:'absolute', top:8, right:8 }} onClick={copy}>{copied?'✓ Copied':'Copy'}</button>
+              <pre style={{ background:'var(--paper-warm)', borderRadius:'var(--radius)', padding:'14px', fontSize:11, fontFamily:'var(--font-mono)', overflowX:'auto', lineHeight:1.6, color:'var(--ink-mid)', maxHeight:140, whiteSpace:'pre-wrap' }}>{APPS_SCRIPT_CODE.slice(0,280)}…</pre>
+              <button className="btn btn-teal btn-sm" style={{ position:'absolute', top:8, right:8 }} onClick={copy}>{copied?'✓ Copied!':'Copy script'}</button>
             </div>
-            <div className="form-group">
+
+            <div style={{ height:1, background:'var(--border)', margin:'20px 0' }}/>
+
+            <h2>Step 2 — Connect your Google Sheet</h2>
+            <p>Paste the spreadsheet ID from your Sheet URL — it's the long string between <code style={{fontFamily:'var(--font-mono)',fontSize:11,background:'var(--paper-warm)',padding:'1px 5px',borderRadius:4}}>/d/</code> and <code style={{fontFamily:'var(--font-mono)',fontSize:11,background:'var(--paper-warm)',padding:'1px 5px',borderRadius:4}}>/edit</code>.</p>
+            <div className="form-group" style={{ marginBottom:14 }}>
+              <label className="form-label">Spreadsheet ID</label>
+              <input className="form-input" value={id} onChange={e=>setId(e.target.value)} placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"/>
+            </div>
+
+            <div style={{ height:1, background:'var(--border)', margin:'20px 0' }}/>
+
+            <h2>Step 3 — Paste the Apps Script URL</h2>
+            <p>Paste the web app URL from Step 1 here. This enables the app to save data directly to your Sheet.</p>
+            <div className="form-group" style={{ marginBottom:14 }}>
               <label className="form-label">Apps Script web app URL</label>
-              <div className="url-input-row">
-                <input className="form-input" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec"/>
-                <button className="btn btn-teal" onClick={()=>onSave(id,url)}>Save</button>
-              </div>
+              <input className="form-input" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec"/>
             </div>
+            <button className="btn btn-teal" style={{ width:'100%', justifyContent:'center', marginBottom:20 }} onClick={()=>onSave(id,url)}>
+              Save connection
+            </button>
+
+            {url && <>
+              <div style={{ height:1, background:'var(--border)', margin:'0 0 20px' }}/>
+              <h2>Step 4 — Create sheet tabs automatically</h2>
+              <p>Click below and Wander will create all 7 tabs in your Google Sheet with the correct column headers — no manual work needed.</p>
+              <button className="btn btn-primary" style={{ width:'100%', justifyContent:'center' }} onClick={handleSetup} disabled={testing}>
+                {testing ? '⏳ Creating tabs…' : setupDone ? '✓ All tabs created!' : '🚀 Auto-create all sheet tabs'}
+              </button>
+              {setupDone && <div style={{ marginTop:10, padding:'12px 14px', background:'var(--teal-light)', borderRadius:'var(--radius)', fontSize:13, color:'var(--teal)', lineHeight:1.6 }}>
+                ✓ Done! Your sheet now has 7 tabs ready: Trips, Days, Documents, Stays, Places, Personnels, OtherDocs. Everything you add or edit in the app will now appear in your Sheet instantly.
+              </div>}
+            </>}
+
+            <div style={{ height:1, background:'var(--border)', margin:'20px 0' }}/>
+            <details>
+              <summary style={{ fontSize:13, fontWeight:500, cursor:'pointer', color:'var(--ink-mid)', userSelect:'none' }}>▶ View column headers (manual reference)</summary>
+              <div style={{ background:'var(--paper-warm)', borderRadius:'var(--radius)', padding:'14px 16px', fontSize:12, color:'var(--ink-mid)', lineHeight:2, marginTop:10 }}>
+                <div><strong>Trips:</strong> id, name, emoji, status, destinations, startDate, endDate, budget, notes</div>
+                <div><strong>Days:</strong> id, tripId, dayNumber, date, title, location, morning, afternoon, evening, transport, notes</div>
+                <div><strong>Documents:</strong> id, tripId, name, type, date, time, ref, fromTo, operator, details, cost, status, belongsTo, link, fileLabel</div>
+                <div><strong>Stays:</strong> id, tripId, name, type, checkIn, checkOut, address, mapsUrl, lat, lng, ref, cost, paid, checkInNotes, extras, belongsTo</div>
+                <div><strong>Places:</strong> id, tripId, dayId, name, time, category, mapsUrl, lat, lng, notes</div>
+                <div><strong>Personnels:</strong> id, tripId, name, role, email, phone</div>
+                <div><strong>OtherDocs:</strong> id, tripId, name, category, ref, issuedBy, expiryDate, belongsTo, notes, link, fileLabel</div>
+              </div>
+            </details>
           </div>
         </div>
       </div>
@@ -903,9 +951,15 @@ function SettingsView({ sheetsId, scriptUrl, onSave }) {
 // ROOT APP
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'wander_v4';
+const STORAGE_KEY = 'wander_v5';
 function loadLocal() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; } }
 function saveLocal(d) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {} }
+
+// Map data keys to their Google Sheet tab names
+const SHEET_MAP = {
+  trips: 'Trips', days: 'Days', docs: 'Documents',
+  stays: 'Stays', places: 'Places', personnels: 'Personnels', otherDocs: 'OtherDocs',
+};
 
 export default function App() {
   const saved = loadLocal();
@@ -918,8 +972,39 @@ export default function App() {
   const [personnels, setPersonnels] = useState(saved?.personnels || DEMO_PERSONNELS);
   const [sheetsId,   setSheetsId]   = useState(saved?.sheetsId   || '');
   const [scriptUrl,  setScriptUrl]  = useState(saved?.scriptUrl  || '');
+  const [syncStatus, setSyncStatus] = useState('idle'); // idle | syncing | ok | error
   const [view, setView]             = useState('trips');
   const [selectedTrip, setSelectedTrip] = useState(null);
+
+  // Read scriptUrl from ref so CRUD closures always have the latest value
+  const scriptUrlRef = { current: scriptUrl };
+
+  async function syncToSheet(sheetKey, item, action='upsert') {
+    const url = scriptUrlRef.current;
+    if (!url) return;
+    setSyncStatus('syncing');
+    try {
+      await pushToSheet(url, SHEET_MAP[sheetKey], item, action);
+      setSyncStatus('ok');
+      setTimeout(() => setSyncStatus('idle'), 2000);
+    } catch {
+      setSyncStatus('error');
+      setTimeout(() => setSyncStatus('idle'), 3000);
+    }
+  }
+
+  async function syncDelete(sheetKey, id) {
+    const url = scriptUrlRef.current;
+    if (!url) return;
+    setSyncStatus('syncing');
+    try {
+      await deleteFromSheet(url, SHEET_MAP[sheetKey], id);
+      setSyncStatus('ok');
+      setTimeout(() => setSyncStatus('idle'), 2000);
+    } catch {
+      setSyncStatus('error');
+    }
+  }
 
   function persist(u) {
     const next = { trips, days, docs, otherDocs, stays, places, personnels, sheetsId, scriptUrl, ...u };
@@ -931,16 +1016,25 @@ export default function App() {
     if (u.stays)      setStays(u.stays);
     if (u.places)     setPlaces(u.places);
     if (u.personnels) setPersonnels(u.personnels);
-    if (u.sheetsId !== undefined)  setSheetsId(u.sheetsId);
-    if (u.scriptUrl !== undefined) setScriptUrl(u.scriptUrl);
+    if (u.sheetsId !== undefined)  { setSheetsId(u.sheetsId); scriptUrlRef.current = scriptUrl; }
+    if (u.scriptUrl !== undefined) { setScriptUrl(u.scriptUrl); scriptUrlRef.current = u.scriptUrl; }
   }
 
-  // Generic CRUD factory
+  // CRUD factory with automatic sheet write-back
   function crud(key, getter) {
     return {
-      add:    item   => persist({ [key]: [...getter(), item] }),
-      update: item   => persist({ [key]: getter().map(x => x.id===item.id ? item : x) }),
-      delete: id     => persist({ [key]: getter().filter(x => x.id!==id) }),
+      add: item => {
+        persist({ [key]: [...getter(), item] });
+        syncToSheet(key, item, 'upsert');
+      },
+      update: item => {
+        persist({ [key]: getter().map(x => x.id===item.id ? item : x) });
+        syncToSheet(key, item, 'upsert');
+      },
+      delete: id => {
+        persist({ [key]: getter().filter(x => x.id!==id) });
+        syncDelete(key, id);
+      },
     };
   }
 
@@ -953,16 +1047,18 @@ export default function App() {
   const personnelCrud = crud('personnels', ()=>personnels);
 
   const handlers = {
-    addDay:            dayCrud.add,       updateDay:        dayCrud.update,       deleteDay:        dayCrud.delete,
-    addDoc:            docCrud.add,       updateDoc:        docCrud.update,       deleteDoc:        docCrud.delete,
-    addOtherDoc:       otherDocCrud.add,  updateOtherDoc:   otherDocCrud.update,  deleteOtherDoc:   otherDocCrud.delete,
-    addStay:           stayCrud.add,      updateStay:       stayCrud.update,      deleteStay:       stayCrud.delete,
-    addPlace:          placeCrud.add,     updatePlace:      placeCrud.update,     deletePlace:      placeCrud.delete,
-    addPersonnel:      personnelCrud.add, updatePersonnel:  personnelCrud.update, deletePersonnel:  personnelCrud.delete,
+    addDay:           dayCrud.add,        updateDay:       dayCrud.update,       deleteDay:       dayCrud.delete,
+    addDoc:           docCrud.add,        updateDoc:       docCrud.update,       deleteDoc:       docCrud.delete,
+    addOtherDoc:      otherDocCrud.add,   updateOtherDoc:  otherDocCrud.update,  deleteOtherDoc:  otherDocCrud.delete,
+    addStay:          stayCrud.add,       updateStay:      stayCrud.update,      deleteStay:      stayCrud.delete,
+    addPlace:         placeCrud.add,      updatePlace:     placeCrud.update,     deletePlace:     placeCrud.delete,
+    addPersonnel:     personnelCrud.add,  updatePersonnel: personnelCrud.update, deletePersonnel: personnelCrud.delete,
   };
 
   const navTo = v => { setView(v); setSelectedTrip(null); };
   const activeTrips = trips.filter(t=>t.status==='upcoming'||t.status==='planning');
+
+  const syncLabel = syncStatus==='syncing' ? '⏳ Syncing…' : syncStatus==='ok' ? '✓ Saved to Sheet' : syncStatus==='error' ? '⚠ Sync error' : scriptUrl ? '✓ Sheet connected' : 'No sheet connected';
 
   return (
     <div className="app">
@@ -983,7 +1079,9 @@ export default function App() {
             </button>
           ))}
         </>}
-        <div className="sidebar-footer">Data saved locally<br/>{scriptUrl?'✓ Sheet write-back on':'Sheet write-back off'}</div>
+        <div className="sidebar-footer" style={{ color: syncStatus==='error'?'var(--rose)':syncStatus==='ok'?'var(--teal-mid)':undefined }}>
+          {syncLabel}
+        </div>
       </aside>
       <main className="main">
         {selectedTrip
@@ -992,7 +1090,8 @@ export default function App() {
           : view==='trips'
             ? <TripsView trips={trips} days={days} docs={docs} stays={stays} onSelect={t=>{setSelectedTrip(t);setView('trip');}} onAdd={tripCrud.add}/>
             : view==='settings'
-              ? <SettingsView sheetsId={sheetsId} scriptUrl={scriptUrl} onSave={(id,url)=>persist({sheetsId:id,scriptUrl:url})}/>
+              ? <SettingsView sheetsId={sheetsId} scriptUrl={scriptUrl} onSave={(id,url)=>{ persist({sheetsId:id,scriptUrl:url}); }}
+                  onSetupSheet={()=>setupSheet(scriptUrl)}/>
               : null
         }
       </main>

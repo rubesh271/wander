@@ -50,22 +50,62 @@ export const OTHER_DOC_CATEGORIES = [
   'Receipt', 'Booking Confirmation', 'Itinerary', 'Emergency Contact', 'Other'
 ];
 
-// Google Sheets Apps Script write-back
-// Sends a row append to a deployed Apps Script web app
-export async function pushToSheet(scriptUrl, sheetName, row) {
+// Sheet headers for each tab — order must match what Apps Script expects
+export const SHEET_HEADERS = {
+  Trips:      ['id','name','emoji','status','destinations','startDate','endDate','budget','notes'],
+  Days:       ['id','tripId','dayNumber','date','title','location','morning','afternoon','evening','transport','notes'],
+  Documents:  ['id','tripId','name','type','date','time','ref','fromTo','operator','details','cost','status','belongsTo','link','fileLabel'],
+  Stays:      ['id','tripId','name','type','checkIn','checkOut','address','mapsUrl','lat','lng','ref','cost','paid','checkInNotes','extras','belongsTo'],
+  Places:     ['id','tripId','dayId','name','time','category','mapsUrl','lat','lng','notes'],
+  Personnels: ['id','tripId','name','role','email','phone'],
+  OtherDocs:  ['id','tripId','name','category','ref','issuedBy','expiryDate','belongsTo','notes','link','fileLabel'],
+};
+
+// Push a row to the Apps Script web app (add or update)
+export async function pushToSheet(scriptUrl, sheetName, row, action='upsert') {
+  if (!scriptUrl) return false;
+  // Strip fileData (base64) from sheet rows — too large, just store link/label
+  const safeRow = { ...row };
+  delete safeRow.fileData;
+  try {
+    await fetch(scriptUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sheet: sheetName, row: safeRow, action }),
+    });
+    return true;
+  } catch { return false; }
+}
+
+// Delete a row from the sheet by id
+export async function deleteFromSheet(scriptUrl, sheetName, id) {
   if (!scriptUrl) return false;
   try {
     await fetch(scriptUrl, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sheet: sheetName, row }),
+      body: JSON.stringify({ sheet: sheetName, action: 'delete', id }),
     });
     return true;
   } catch { return false; }
 }
 
-// Convert file to base64 for local storage
+// Setup sheet headers via Apps Script
+export async function setupSheet(scriptUrl) {
+  if (!scriptUrl) return false;
+  try {
+    await fetch(scriptUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'setup', headers: SHEET_HEADERS }),
+    });
+    return true;
+  } catch { return false; }
+}
+
 export function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -74,3 +114,81 @@ export function fileToBase64(file) {
     reader.readAsDataURL(file);
   });
 }
+
+// The complete Apps Script to paste into Extensions > Apps Script
+export const APPS_SCRIPT_CODE = `// Wander — Google Sheets Apps Script
+// Paste this into Extensions > Apps Script, then Deploy as Web App
+
+const SHEET_HEADERS = {
+  Trips:      ['id','name','emoji','status','destinations','startDate','endDate','budget','notes'],
+  Days:       ['id','tripId','dayNumber','date','title','location','morning','afternoon','evening','transport','notes'],
+  Documents:  ['id','tripId','name','type','date','time','ref','fromTo','operator','details','cost','status','belongsTo','link','fileLabel'],
+  Stays:      ['id','tripId','name','type','checkIn','checkOut','address','mapsUrl','lat','lng','ref','cost','paid','checkInNotes','extras','belongsTo'],
+  Places:     ['id','tripId','dayId','name','time','category','mapsUrl','lat','lng','notes'],
+  Personnels: ['id','tripId','name','role','email','phone'],
+  OtherDocs:  ['id','tripId','name','category','ref','issuedBy','expiryDate','belongsTo','notes','link','fileLabel'],
+};
+
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // Setup: create all tabs with headers
+    if (data.action === 'setup') {
+      Object.entries(data.headers).forEach(([name, headers]) => {
+        let sheet = ss.getSheetByName(name);
+        if (!sheet) sheet = ss.insertSheet(name);
+        if (sheet.getLastRow() === 0) {
+          sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+          sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+          sheet.setFrozenRows(1);
+        }
+      });
+      return ok('Setup complete');
+    }
+
+    const sheet = ss.getSheetByName(data.sheet);
+    if (!sheet) return ok('Sheet not found: ' + data.sheet);
+
+    // Delete a row by id
+    if (data.action === 'delete') {
+      const idCol = 1;
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 2) return ok('Nothing to delete');
+      const ids = sheet.getRange(2, idCol, lastRow - 1, 1).getValues().flat().map(String);
+      const idx = ids.indexOf(String(data.id));
+      if (idx >= 0) sheet.deleteRow(idx + 2);
+      return ok('Deleted');
+    }
+
+    // Upsert: add or update
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const row = headers.map(h => data.row[h] !== undefined ? String(data.row[h]) : '');
+    const lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues().flat().map(String);
+      const idx = ids.indexOf(String(data.row.id));
+      if (idx >= 0) {
+        sheet.getRange(idx + 2, 1, 1, headers.length).setValues([row]);
+        return ok('Updated row ' + (idx + 2));
+      }
+    }
+    sheet.appendRow(row);
+    return ok('Appended');
+
+  } catch(err) {
+    return ContentService.createTextOutput('Error: ' + err.message)
+      .setMimeType(ContentService.MimeType.TEXT);
+  }
+}
+
+function doGet(e) {
+  return ContentService.createTextOutput('Wander script is live.')
+    .setMimeType(ContentService.MimeType.TEXT);
+}
+
+function ok(msg) {
+  return ContentService.createTextOutput(msg)
+    .setMimeType(ContentService.MimeType.TEXT);
+}`;
