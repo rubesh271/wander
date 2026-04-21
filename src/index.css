@@ -349,3 +349,86 @@ a { color: inherit; text-decoration: none; }
 .stay-map-btn:hover { background: #d0ece4; }
 
 .result-count { font-size: 12px; color: var(--ink-light); padding: 2px 0; }
+
+/* ── INLINE EDIT ── */
+.card-edit-bar {
+  position: absolute; top: 10px; right: 10px;
+  display: none; gap: 4px; z-index: 2;
+}
+.card:hover .card-edit-bar,
+.day-card:hover .card-edit-bar,
+.personnel-card:hover .card-edit-bar { display: flex; }
+
+.card-edit-btn {
+  font-size: 13px; padding: 3px 7px; border-radius: 6px;
+  background: var(--paper-card); border: 1px solid var(--border-mid);
+  cursor: pointer; line-height: 1; transition: background 0.12s;
+}
+.card-edit-btn:hover { background: var(--paper-warm); }
+.card-delete-btn:hover { background: var(--rose-light); border-color: var(--rose); }
+
+.edit-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.edit-form-grid .full-width { grid-column: span 2; }
+
+/* ── FILE UPLOAD ── */
+.file-upload-zone {
+  border: 1.5px dashed var(--border-mid);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  background: var(--paper);
+  transition: all 0.15s;
+  text-align: center;
+}
+.file-upload-zone:hover { border-color: var(--teal); background: var(--teal-light); }
+
+/* ── SUB TABS ── */
+.sub-tab-bar {
+  display: flex; gap: 0;
+  background: var(--paper-warm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px;
+  margin-bottom: 16px;
+  width: fit-content;
+}
+.sub-tab {
+  padding: 6px 14px; font-size: 12px; font-weight: 500;
+  color: var(--ink-light); cursor: pointer;
+  border-radius: calc(var(--radius) - 2px);
+  border: none; background: none;
+  transition: all 0.12s; font-family: var(--font-body);
+}
+.sub-tab:hover { color: var(--ink); }
+.sub-tab.active { background: var(--paper-card); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+/* ── OTHER DOCS CARDS ── */
+.other-doc-card {
+  background: var(--paper-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 16px;
+  position: relative; transition: box-shadow 0.15s;
+}
+.other-doc-card:hover { box-shadow: var(--shadow-md); }
+.other-docs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+
+.doc-icon { font-size: 28px; margin-bottom: 8px; }
+.doc-title { font-size: 14px; font-weight: 500; color: var(--ink); margin-bottom: 3px; }
+.doc-meta { font-size: 12px; color: var(--ink-light); margin-bottom: 8px; }
+
+/* ── TABLE ROW EDIT ── */
+.table-row-editing td { background: var(--teal-light) !important; }
+.table-input {
+  width: 100%; padding: 4px 7px; border: 1px solid var(--border-mid);
+  border-radius: 6px; font-size: 12px; font-family: var(--font-body);
+  background: var(--paper-card); color: var(--ink); outline: none;
+}
+.table-input:focus { border-color: var(--teal); }
+.table-select {
+  padding: 4px 6px; border: 1px solid var(--border-mid);
+  border-radius: 6px; font-size: 12px; font-family: var(--font-body);
+  background: var(--paper-card); color: var(--ink); outline: none;
+}
+
+/* ── SUMMARY ROW 4-col ── */
+.summary-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+@media (max-width: 700px) { .summary-row { grid-template-columns: repeat(2, 1fr); } }

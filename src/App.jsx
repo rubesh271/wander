@@ -1,289 +1,176 @@
 import { useState, useMemo } from 'react';
-import { Map, Settings, ChevronLeft, Plus, X, ExternalLink, MapPin, Navigation, Search, Users } from 'lucide-react';
-import { DEMO_TRIPS, DEMO_DAYS, DEMO_DOCS, DEMO_STAYS, DEMO_PLACES, DEMO_PERSONNELS } from './demoData';
+import { Map, Settings, ChevronLeft, Plus, MapPin, ExternalLink } from 'lucide-react';
+import {
+  DEMO_TRIPS, DEMO_DAYS, DEMO_DOCS, DEMO_STAYS,
+  DEMO_PLACES, DEMO_PERSONNELS, DEMO_OTHER_DOCS
+} from './demoData';
+import {
+  Modal, Field, Avatar, StatusBadge, TypeBadge, CategoryBadge,
+  SearchFilterBar, MapModal, AttachmentField, AttachmentChips, InlineEditWrapper
+} from './components/ui.jsx';
+import { fmt, nights, matchesSearch, catStyle, OTHER_DOC_CATEGORIES, fileToBase64, avatarColor, initials } from './utils.js';
 import './index.css';
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// DAYS VIEW
+// ─────────────────────────────────────────────────────────────────────────────
 
-function fmt(d) {
-  if (!d) return '—';
-  try { return new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }); }
-  catch { return d; }
-}
-function nights(a, b) {
-  if (!a || !b) return '?';
-  const n = Math.round((new Date(b) - new Date(a)) / 86400000);
-  return isNaN(n) ? '?' : n;
-}
-function matchesSearch(obj, q) {
-  if (!q) return true;
-  const lower = q.toLowerCase();
-  return Object.values(obj).some(v => String(v).toLowerCase().includes(lower));
+function parsePeriod(text) {
+  if (!text) return [];
+  return text.split('·').map(seg => {
+    const s = seg.trim();
+    const m = s.match(/^(\d{2}:\d{2})\s*(.*)/);
+    return m ? { time:m[1], content:m[2] } : { time:'', content:s };
+  }).filter(x => x.content);
 }
 
-const AVATAR_COLORS = [
-  { bg:'#e8f5f0', color:'#1a7a5e' },
-  { bg:'#f0edf8', color:'#5a4a8a' },
-  { bg:'#fdf3e3', color:'#c47a1e' },
-  { bg:'#fdf0ef', color:'#c0524a' },
-  { bg:'#e6f1fb', color:'#185fa5' },
-];
-function avatarColor(name, i) { return AVATAR_COLORS[(name?.charCodeAt(0) || i) % AVATAR_COLORS.length]; }
-function initials(name) { return name?.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2) || '?'; }
-
-const CAT_COLORS = {
-  Food:      { bg:'#fdf3e3', color:'#c47a1e', dot:'#c47a1e' },
-  Sights:    { bg:'#e8f5f0', color:'#1a7a5e', dot:'#1a7a5e' },
-  Activity:  { bg:'#f0edf8', color:'#5a4a8a', dot:'#5a4a8a' },
-  Transport: { bg:'#f1efe8', color:'#8a8480', dot:'#8a8480' },
-  Shopping:  { bg:'#fdf0ef', color:'#c0524a', dot:'#c0524a' },
-  Stay:      { bg:'#e6f1fb', color:'#185fa5', dot:'#185fa5' },
-  Other:     { bg:'#f3efe8', color:'#4a4640', dot:'#4a4640' },
-};
-function catStyle(cat) { return CAT_COLORS[cat] || CAT_COLORS.Other; }
-
-// ── UI Atoms ───────────────────────────────────────────────────────────────
-
-function StatusBadge({ status }) {
-  const m = { upcoming:['badge-upcoming','Upcoming'], planning:['badge-planning','Planning'], dream:['badge-dream','Dream trip'], done:['badge-done','Done'] };
-  const [cls, label] = m[status] || ['badge-done', status];
-  return <span className={`trip-status-badge ${cls}`}>{label}</span>;
-}
-function TypeBadge({ type }) {
-  const c = { Flight:'var(--teal-light)', Train:'var(--amber-light)', Pass:'var(--rose-light)', Visa:'var(--rose-light)', Hotel:'var(--teal-light)', Airbnb:'var(--purple-light)' };
-  return <span style={{ fontSize:11, padding:'2px 8px', borderRadius:6, background:c[type]||'var(--paper-warm)', color:'var(--ink-mid)' }}>{type}</span>;
-}
-function Avatar({ name, size=24, index=0 }) {
-  const ac = avatarColor(name, index);
-  return <span className="person-avatar" style={{ width:size, height:size, background:ac.bg, color:ac.color, fontSize: size*0.38 }}>{initials(name)}</span>;
-}
-
-function Modal({ title, onClose, onSave, children }) {
+function DayEditForm({ day, onChange }) {
+  const s = k => e => onChange({ ...day, [k]: e.target.value });
   return (
-    <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <span className="modal-title">{title}</span>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={16}/></button>
-        </div>
-        <div className="modal-body">{children}</div>
-        <div className="modal-footer">
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-teal" onClick={onSave}>Save</button>
-        </div>
+    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      <div className="edit-form-grid">
+        <Field label="Day number"><input className="form-input" value={day.dayNumber||''} onChange={s('dayNumber')}/></Field>
+        <Field label="Date"><input className="form-input" type="date" value={day.date||''} onChange={s('date')}/></Field>
+        <Field label="Title" ><input className="form-input" value={day.title||''} onChange={s('title')}/></Field>
+        <Field label="Location"><input className="form-input" value={day.location||''} onChange={s('location')}/></Field>
+        <div className="full-width"><Field label="☀️ Morning"><textarea className="form-textarea" value={day.morning||''} onChange={s('morning')}/></Field></div>
+        <div className="full-width"><Field label="🌤 Afternoon"><textarea className="form-textarea" value={day.afternoon||''} onChange={s('afternoon')}/></Field></div>
+        <div className="full-width"><Field label="🌙 Evening"><textarea className="form-textarea" value={day.evening||''} onChange={s('evening')}/></Field></div>
+        <div className="full-width"><Field label="Transport"><input className="form-input" value={day.transport||''} onChange={s('transport')}/></Field></div>
+        <div className="full-width"><Field label="Notes"><textarea className="form-textarea" value={day.notes||''} onChange={s('notes')}/></Field></div>
       </div>
     </div>
   );
 }
-function Field({ label, children }) {
-  return <div className="form-group"><label className="form-label">{label}</label>{children}</div>;
-}
 
-// ── Search + Person Filter Bar ─────────────────────────────────────────────
+function PlaceRow({ place, onSave, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(place);
+  const cs = catStyle(place.category);
+  const s = k => e => setDraft(p => ({...p,[k]:e.target.value}));
 
-function SearchFilterBar({ query, onQuery, persons, activePerson, onPerson }) {
   return (
-    <div className="search-filter-bar">
-      <div className="search-input-wrap">
-        <Search size={14}/>
-        <input className="search-input" placeholder="Search anything…" value={query} onChange={e => onQuery(e.target.value)}/>
-      </div>
-      {persons.length > 0 && (
-        <div className="person-filter-pills">
-          <button className={`person-pill ${!activePerson ? 'active' : ''}`} onClick={() => onPerson('')}>All</button>
-          {persons.map((p, i) => (
-            <button key={p.id} className={`person-pill ${activePerson===p.name ? 'active' : ''}`} onClick={() => onPerson(activePerson===p.name ? '' : p.name)}>
-              <Avatar name={p.name} size={18} index={i}/> {p.name}
-            </button>
-          ))}
-        </div>
+    <div className="place-row" style={{ alignItems: editing ? 'flex-start' : 'center', flexDirection: editing ? 'column' : 'row', gap: editing ? 10 : undefined }}>
+      {editing ? (
+        <>
+          <div className="edit-form-grid" style={{ width:'100%' }}>
+            <Field label="Name"><input className="form-input" value={draft.name||''} onChange={s('name')}/></Field>
+            <Field label="Time"><input className="form-input" type="time" value={draft.time||''} onChange={s('time')}/></Field>
+            <Field label="Category">
+              <select className="form-select" value={draft.category||'Other'} onChange={s('category')}>
+                {Object.keys({Food:1,Sights:1,Activity:1,Transport:1,Shopping:1,Stay:1,Other:1}).map(c=><option key={c}>{c}</option>)}
+              </select>
+            </Field>
+            <Field label="Google Maps URL"><input className="form-input" value={draft.mapsUrl||''} onChange={s('mapsUrl')}/></Field>
+            <Field label="Latitude"><input className="form-input" value={draft.lat||''} onChange={s('lat')}/></Field>
+            <Field label="Longitude"><input className="form-input" value={draft.lng||''} onChange={s('lng')}/></Field>
+            <div className="full-width"><Field label="Notes"><input className="form-input" value={draft.notes||''} onChange={s('notes')}/></Field></div>
+          </div>
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end', width:'100%' }}>
+            <button className="btn btn-sm" style={{ color:'var(--rose)' }} onClick={onDelete}>Delete</button>
+            <button className="btn btn-sm" onClick={()=>setEditing(false)}>Cancel</button>
+            <button className="btn btn-teal btn-sm" onClick={()=>{ onSave(draft); setEditing(false); }}>Save</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <span className="place-time">{place.time||'—'}</span>
+          <span className="place-dot" style={{ background:cs.dot }}/>
+          <div className="place-info">
+            <div className="place-name">{place.name}</div>
+            {place.notes && <div className="place-note">{place.notes}</div>}
+          </div>
+          <span className="place-cat" style={{ background:cs.bg, color:cs.color }}>{place.category}</span>
+          {place.mapsUrl && <a href={place.mapsUrl} target="_blank" rel="noreferrer" className="place-link"><ExternalLink size={13}/></a>}
+          <button className="card-edit-btn" style={{ display:'flex' }} onClick={()=>{ setDraft(place); setEditing(true); }}>✏️</button>
+        </>
       )}
     </div>
   );
 }
 
-// ── Map Modal (shared) ─────────────────────────────────────────────────────
-
-function MapModal({ title, subtitle, items, onClose }) {
-  // items: [{ id, name, subtitle, lat, lng, mapsUrl, badge }]
-  const [active, setActive] = useState(items[0]?.id || null);
-  const activeItem = items.find(p => p.id === active);
-
-  function buildEmbedUrl(item) {
-    if (!item) return null;
-    if (item.lat && item.lng) return `https://maps.google.com/maps?q=${item.lat},${item.lng}&z=15&output=embed`;
-    if (item.mapsUrl) return `https://maps.google.com/maps?q=${encodeURIComponent(item.name)}&output=embed`;
-    return null;
-  }
-  function buildDirectionsUrl() {
-    const pts = items.filter(p => p.lat && p.lng);
-    if (pts.length === 0) return null;
-    if (pts.length === 1) return pts[0].mapsUrl || `https://maps.google.com/?q=${pts[0].lat},${pts[0].lng}`;
-    const origin = `${pts[0].lat},${pts[0].lng}`;
-    const dest = `${pts[pts.length-1].lat},${pts[pts.length-1].lng}`;
-    const wps = pts.slice(1,-1).map(p=>`${p.lat},${p.lng}`).join('|');
-    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${wps?`&waypoints=${wps}`:''}`;
-  }
-
-  const embedUrl = buildEmbedUrl(activeItem);
-  const directionsUrl = buildDirectionsUrl();
-
-  return (
-    <div className="map-modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
-      <div className="map-modal">
-        <div className="map-modal-header">
-          <div>
-            <div className="map-modal-title">{title}</div>
-            <div className="map-modal-sub">{subtitle}</div>
-          </div>
-          <div style={{ display:'flex', gap:8 }}>
-            {directionsUrl && <a href={directionsUrl} target="_blank" rel="noreferrer" className="btn btn-teal btn-sm"><Navigation size={13}/> Route</a>}
-            <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={16}/></button>
-          </div>
-        </div>
-        <div className="map-modal-body">
-          <div className="map-sidebar">
-            {items.map((item, i) => (
-              <div key={item.id} className={`map-place-item ${active===item.id?'active':''}`} onClick={() => setActive(item.id)}>
-                <div className="map-place-num" style={{ background: item.dotBg||'var(--teal-light)', color: item.dotColor||'var(--teal)' }}>{i+1}</div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div className="map-place-name">{item.name}</div>
-                  <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:2 }}>
-                    {item.subtitle && <span className="map-place-time">{item.subtitle}</span>}
-                    {item.badge && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:8, background: item.dotBg||'var(--teal-light)', color: item.dotColor||'var(--teal)', fontWeight:500 }}>{item.badge}</span>}
-                  </div>
-                  {item.notes && <div style={{ fontSize:11, color:'var(--ink-light)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.notes}</div>}
-                </div>
-                {item.mapsUrl && (
-                  <a href={item.mapsUrl} target="_blank" rel="noreferrer" className="place-link" onClick={e=>e.stopPropagation()}><ExternalLink size={12}/></a>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="map-frame-wrap">
-            {embedUrl
-              ? <iframe title="map" src={embedUrl} allowFullScreen loading="lazy" referrerPolicy="no-referrer-when-downgrade"/>
-              : <div className="map-placeholder">
-                  <div className="map-icon">🗺️</div>
-                  <p>{activeItem
-                    ? <>No coordinates for <strong>{activeItem.name}</strong>.<br/>{activeItem.mapsUrl && <a href={activeItem.mapsUrl} target="_blank" rel="noreferrer">Open in Google Maps ↗</a>}</>
-                    : 'Select a location to view its map.'
-                  }</p>
-                </div>
-            }
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Add Place Modal ────────────────────────────────────────────────────────
-
-function AddPlaceModal({ tripId, dayId, onClose, onAdd }) {
-  const [f, setF] = useState({ name:'', time:'', category:'Food', mapsUrl:'', lat:'', lng:'', notes:'' });
-  const s = k => e => setF(p => ({...p,[k]:e.target.value}));
-  function parseMapUrl(url) {
-    const m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || url.match(/ll=(-?\d+\.\d+),(-?\d+\.\d+)/) || url.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
-    if (m) setF(p => ({...p, mapsUrl:url, lat:m[1], lng:m[2]}));
-    else setF(p => ({...p, mapsUrl:url}));
-  }
-  return (
-    <Modal title="Add place" onClose={onClose} onSave={() => { onAdd({...f, id:Date.now().toString(), tripId, dayId}); onClose(); }}>
-      <Field label="Place name"><input className="form-input" value={f.name} onChange={s('name')} placeholder="Meiji Shrine"/></Field>
-      <div className="form-row">
-        <Field label="Time"><input className="form-input" type="time" value={f.time} onChange={s('time')}/></Field>
-        <Field label="Category"><select className="form-select" value={f.category} onChange={s('category')}>{Object.keys(CAT_COLORS).map(c=><option key={c}>{c}</option>)}</select></Field>
-      </div>
-      <Field label="Google Maps link">
-        <input className="form-input" value={f.mapsUrl} onChange={e=>parseMapUrl(e.target.value)} placeholder="Paste Google Maps URL — lat/lng auto-extracted"/>
-      </Field>
-      {(f.lat||f.lng) && <div style={{ fontSize:12, color:'var(--teal)', background:'var(--teal-light)', padding:'6px 10px', borderRadius:'var(--radius)' }}>✓ Coordinates found: {f.lat}, {f.lng}</div>}
-      <div className="form-row">
-        <Field label="Latitude"><input className="form-input" value={f.lat} onChange={s('lat')} placeholder="35.6764"/></Field>
-        <Field label="Longitude"><input className="form-input" value={f.lng} onChange={s('lng')} placeholder="139.6993"/></Field>
-      </div>
-      <Field label="Notes"><textarea className="form-textarea" value={f.notes} onChange={s('notes')} placeholder="Book ahead, opening hours…"/></Field>
-    </Modal>
-  );
-}
-
-// ── Days View ──────────────────────────────────────────────────────────────
-
-function parsePeriod(text) {
-  if (!text) return [];
-  return text.split('·').map(seg => {
-    const seg2 = seg.trim();
-    const m = seg2.match(/^(\d{2}:\d{2})\s*(.*)/);
-    return m ? { time:m[1], content:m[2] } : { time:'', content:seg2 };
-  }).filter(x => x.content);
-}
-
-function DaysView({ tripId, days, places, onAddDay, onAddPlace }) {
+function DaysView({ tripId, days, places, onAddDay, onUpdateDay, onDeleteDay, onAddPlace, onUpdatePlace, onDeletePlace }) {
   const tripDays = days.filter(d=>d.tripId===tripId).sort((a,b)=>Number(a.dayNumber)-Number(b.dayNumber));
   const [showAdd, setShowAdd] = useState(false);
+  const [showAddPlace, setShowAddPlace] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState(null);
   const [mapDay, setMapDay] = useState(null);
+  const [newPlace, setNewPlace] = useState({ name:'', time:'', category:'Food', mapsUrl:'', lat:'', lng:'', notes:'' });
+
   const mapItems = mapDay ? places.filter(p=>p.dayId===mapDay.id).sort((a,b)=>(a.time||'').localeCompare(b.time||'')).map(p=>({ ...p, subtitle:p.time, badge:p.category, dotBg:catStyle(p.category).bg, dotColor:catStyle(p.category).color })) : [];
+
+  function parseMapUrl(url, cur) {
+    const m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || url.match(/ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    return m ? { ...cur, mapsUrl:url, lat:m[1], lng:m[2] } : { ...cur, mapsUrl:url };
+  }
 
   return (
     <>
       <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:16 }}>
-        <button className="btn btn-teal btn-sm" onClick={() => setShowAdd(true)}><Plus size={14}/> Add day</button>
+        <button className="btn btn-teal btn-sm" onClick={()=>setShowAdd(true)}><Plus size={14}/> Add day</button>
       </div>
       {tripDays.length===0
-        ? <div className="empty-state"><div className="empty-icon">📅</div><h3>No days yet</h3><p>Add your day-by-day itinerary above.</p></div>
+        ? <div className="empty-state"><div className="empty-icon">📅</div><h3>No days yet</h3></div>
         : <div className="days-list">
           {tripDays.map(day => {
             const dayPlaces = places.filter(p=>p.dayId===day.id).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+            const isEditing = editing===day.id;
             return (
-              <div key={day.id} className="day-card">
-                <div className="day-card-header" onClick={()=>setExpanded(expanded===day.id?null:day.id)} style={{cursor:'pointer'}}>
+              <div key={day.id} className="day-card" style={{ position:'relative' }}>
+                <div className="day-card-header" onClick={()=>{ if(!isEditing) setExpanded(expanded===day.id?null:day.id); }} style={{ cursor:'pointer' }}>
                   <div className="day-number">{day.dayNumber}</div>
                   <div className="day-card-meta">
                     <div className="day-card-title">{day.title||`Day ${day.dayNumber}`}</div>
                     <div className="day-card-date">{fmt(day.date)}{day.location?` · ${day.location}`:''}</div>
                   </div>
                   <div style={{ display:'flex', gap:6, marginLeft:'auto', alignItems:'center' }}>
-                    {dayPlaces.length>0 && <button className="map-view-btn" onClick={e=>{e.stopPropagation();setMapDay(day);}} style={{ padding:'5px 10px', fontSize:12 }}><MapPin size={13}/> Map ({dayPlaces.length})</button>}
-                    <span style={{ fontSize:12, color:'var(--ink-faint)' }}>{expanded===day.id?'▲':'▼'}</span>
+                    {dayPlaces.length>0 && !isEditing && <button className="map-view-btn" onClick={e=>{e.stopPropagation();setMapDay(day);}} style={{ padding:'5px 10px',fontSize:12 }}><MapPin size={13}/> Map ({dayPlaces.length})</button>}
+                    {!isEditing && <>
+                      <button className="card-edit-btn" onClick={e=>{e.stopPropagation();setDraft({...day});setEditing(day.id);setExpanded(day.id);}}>✏️</button>
+                      <button className="card-edit-btn card-delete-btn" onClick={e=>{e.stopPropagation();onDeleteDay(day.id);}}>🗑</button>
+                    </>}
+                    <span style={{ fontSize:12, color:'var(--ink-faint)', paddingLeft:4 }}>{(expanded===day.id||isEditing)?'▲':'▼'}</span>
                   </div>
                 </div>
-                {expanded===day.id && (
+                {(expanded===day.id || isEditing) && (
                   <div className="day-card-body">
-                    {[['☀️ Morning',day.morning],['🌤 Afternoon',day.afternoon],['🌙 Evening',day.evening]].map(([label,text])=>
-                      text ? (<div key={label}><div className="period-label">{label}</div>{parsePeriod(text).map((slot,i)=>(
-                        <div key={i} className="time-slot"><span className="time-label">{slot.time}</span><span className="time-content">{slot.content}</span></div>
-                      ))}</div>) : null
-                    )}
-                    <div style={{ marginTop:(day.morning||day.afternoon||day.evening)?16:0 }}>
-                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                        <div className="period-label" style={{ margin:0, flex:1 }}>📍 Places</div>
-                        <button className="btn btn-ghost btn-sm" style={{ fontSize:11, padding:'3px 8px', marginLeft:8 }} onClick={()=>setShowAdd({dayId:day.id})}><Plus size={11}/> Add place</button>
-                      </div>
-                      {dayPlaces.length===0
-                        ? <div style={{ fontSize:12, color:'var(--ink-faint)', padding:'8px 0' }}>No places yet — add them to see on map.</div>
-                        : <div className="places-list">
-                          {dayPlaces.map(place => {
-                            const cs = catStyle(place.category);
-                            return (
-                              <div key={place.id} className="place-row">
-                                <span className="place-time">{place.time||'—'}</span>
-                                <span className="place-dot" style={{ background:cs.dot }}/>
-                                <div className="place-info">
-                                  <div className="place-name">{place.name}</div>
-                                  {place.notes && <div className="place-note">{place.notes}</div>}
-                                </div>
-                                <span className="place-cat" style={{ background:cs.bg, color:cs.color }}>{place.category}</span>
-                                {place.mapsUrl && <a href={place.mapsUrl} target="_blank" rel="noreferrer" className="place-link"><ExternalLink size={13}/></a>}
-                              </div>
-                            );
-                          })}
+                    {isEditing ? (
+                      <>
+                        <DayEditForm day={draft} onChange={setDraft}/>
+                        <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12, paddingTop:12, borderTop:'1px solid var(--border)' }}>
+                          <button className="btn btn-sm" onClick={()=>setEditing(null)}>Cancel</button>
+                          <button className="btn btn-teal btn-sm" onClick={()=>{ onUpdateDay(draft); setEditing(null); }}>Save changes</button>
                         </div>
-                      }
-                      {dayPlaces.length>0 && <button className="map-view-btn" style={{ marginTop:10, width:'100%', justifyContent:'center' }} onClick={()=>setMapDay(day)}><MapPin size={14}/> View all {dayPlaces.length} places on map</button>}
-                    </div>
-                    {(day.transport||day.notes) && <div style={{ marginTop:12, padding:'10px 12px', background:'var(--paper-warm)', borderRadius:8, fontSize:12, color:'var(--ink-mid)', lineHeight:1.6 }}>{day.transport&&<div><strong>Transport:</strong> {day.transport}</div>}{day.notes&&<div style={{marginTop:4}}><strong>Notes:</strong> {day.notes}</div>}</div>}
+                      </>
+                    ) : (
+                      <>
+                        {[['☀️ Morning',day.morning],['🌤 Afternoon',day.afternoon],['🌙 Evening',day.evening]].map(([label,text])=>
+                          text ? (<div key={label}><div className="period-label">{label}</div>{parsePeriod(text).map((slot,i)=>(
+                            <div key={i} className="time-slot"><span className="time-label">{slot.time}</span><span className="time-content">{slot.content}</span></div>
+                          ))}</div>) : null
+                        )}
+                        <div style={{ marginTop:12 }}>
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+                            <div className="period-label" style={{ margin:0, flex:1 }}>📍 Places</div>
+                            <button className="btn btn-ghost btn-sm" style={{ fontSize:11, padding:'3px 8px', marginLeft:8 }} onClick={()=>setShowAddPlace(day.id)}><Plus size={11}/> Add place</button>
+                          </div>
+                          {dayPlaces.length===0
+                            ? <div style={{ fontSize:12, color:'var(--ink-faint)', padding:'6px 0' }}>No places yet.</div>
+                            : <div className="places-list">
+                              {dayPlaces.map(place=>(
+                                <PlaceRow key={place.id} place={place}
+                                  onSave={updated=>onUpdatePlace(updated)}
+                                  onDelete={()=>onDeletePlace(place.id)}/>
+                              ))}
+                            </div>
+                          }
+                          {dayPlaces.length>0 && <button className="map-view-btn" style={{ marginTop:10, width:'100%', justifyContent:'center' }} onClick={()=>setMapDay(day)}><MapPin size={14}/> View all {dayPlaces.length} places on map</button>}
+                        </div>
+                        {(day.transport||day.notes) && <div style={{ marginTop:12, padding:'10px 12px', background:'var(--paper-warm)', borderRadius:8, fontSize:12, color:'var(--ink-mid)', lineHeight:1.6 }}>{day.transport&&<div><strong>Transport:</strong> {day.transport}</div>}{day.notes&&<div style={{marginTop:4}}><strong>Notes:</strong> {day.notes}</div>}</div>}
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -291,57 +178,246 @@ function DaysView({ tripId, days, places, onAddDay, onAddPlace }) {
           })}
         </div>
       }
-      {showAdd===true && <AddDayModal tripId={tripId} onClose={()=>setShowAdd(false)} onAdd={d=>{onAddDay(d);setShowAdd(false);}}/>}
-      {showAdd&&showAdd.dayId && <AddPlaceModal tripId={tripId} dayId={showAdd.dayId} onClose={()=>setShowAdd(false)} onAdd={p=>{onAddPlace(p);setShowAdd(false);}}/>}
+      {/* Add Day Modal */}
+      {showAdd && (
+        <Modal title="New day" onClose={()=>setShowAdd(false)} onSave={()=>{
+          const f = { dayNumber:'', date:'', title:'', location:'', morning:'', afternoon:'', evening:'', transport:'', notes:'' };
+          setShowAdd('form'); // handled below
+        }}>
+          <AddDayForm tripId={tripId} onAdd={d=>{onAddDay(d);setShowAdd(false);}} onClose={()=>setShowAdd(false)}/>
+        </Modal>
+      )}
+      {/* Add Place inline Modal */}
+      {showAddPlace && (
+        <Modal title="Add place" onClose={()=>setShowAddPlace(null)} onSave={async ()=>{
+          onAddPlace({ ...newPlace, id:Date.now().toString(), tripId, dayId:showAddPlace });
+          setNewPlace({ name:'', time:'', category:'Food', mapsUrl:'', lat:'', lng:'', notes:'' });
+          setShowAddPlace(null);
+        }}>
+          <Field label="Place name"><input className="form-input" value={newPlace.name} onChange={e=>setNewPlace(p=>({...p,name:e.target.value}))} placeholder="Meiji Shrine"/></Field>
+          <div className="form-row">
+            <Field label="Time"><input className="form-input" type="time" value={newPlace.time} onChange={e=>setNewPlace(p=>({...p,time:e.target.value}))}/></Field>
+            <Field label="Category"><select className="form-select" value={newPlace.category} onChange={e=>setNewPlace(p=>({...p,category:e.target.value}))}>{Object.keys({Food:1,Sights:1,Activity:1,Transport:1,Shopping:1,Stay:1,Other:1}).map(c=><option key={c}>{c}</option>)}</select></Field>
+          </div>
+          <Field label="Google Maps URL"><input className="form-input" value={newPlace.mapsUrl} onChange={e=>setNewPlace(p=>parseMapUrl(e.target.value,p))} placeholder="Paste Google Maps URL"/></Field>
+          {(newPlace.lat||newPlace.lng)&&<div style={{fontSize:12,color:'var(--teal)',background:'var(--teal-light)',padding:'6px 10px',borderRadius:'var(--radius)'}}>✓ Coordinates: {newPlace.lat}, {newPlace.lng}</div>}
+          <div className="form-row">
+            <Field label="Latitude"><input className="form-input" value={newPlace.lat} onChange={e=>setNewPlace(p=>({...p,lat:e.target.value}))}/></Field>
+            <Field label="Longitude"><input className="form-input" value={newPlace.lng} onChange={e=>setNewPlace(p=>({...p,lng:e.target.value}))}/></Field>
+          </div>
+          <Field label="Notes"><textarea className="form-textarea" value={newPlace.notes} onChange={e=>setNewPlace(p=>({...p,notes:e.target.value}))}/></Field>
+        </Modal>
+      )}
       {mapDay && mapItems.length>0 && <MapModal title={`Day ${mapDay.dayNumber} — ${mapDay.title||'Map'}`} subtitle={`${mapItems.length} places · ${fmt(mapDay.date)}`} items={mapItems} onClose={()=>setMapDay(null)}/>}
     </>
   );
 }
 
-function AddDayModal({ tripId, onClose, onAdd }) {
+function AddDayForm({ tripId, onAdd, onClose }) {
   const [f, setF] = useState({ dayNumber:'', date:'', title:'', location:'', morning:'', afternoon:'', evening:'', transport:'', notes:'' });
-  const s = k => e => setF(p => ({...p,[k]:e.target.value}));
+  const s = k => e => setF(p=>({...p,[k]:e.target.value}));
   return (
-    <Modal title="New day" onClose={onClose} onSave={()=>{onAdd({...f,id:Date.now().toString(),tripId});onClose();}}>
-      <div className="form-row">
-        <Field label="Day number"><input className="form-input" value={f.dayNumber} onChange={s('dayNumber')} placeholder="1"/></Field>
-        <Field label="Date"><input className="form-input" type="date" value={f.date} onChange={s('date')}/></Field>
+    <>
+      <div className="form-row"><Field label="Day number"><input className="form-input" value={f.dayNumber} onChange={s('dayNumber')} placeholder="1"/></Field><Field label="Date"><input className="form-input" type="date" value={f.date} onChange={s('date')}/></Field></div>
+      <Field label="Title"><input className="form-input" value={f.title} onChange={s('title')} placeholder="Arrival — Shinjuku"/></Field>
+      <Field label="Location"><input className="form-input" value={f.location} onChange={s('location')} placeholder="Tokyo"/></Field>
+      <Field label="☀️ Morning"><textarea className="form-textarea" value={f.morning} onChange={s('morning')} placeholder="09:00 Shrine · 10:30 Market..."/></Field>
+      <Field label="🌤 Afternoon"><textarea className="form-textarea" value={f.afternoon} onChange={s('afternoon')}/></Field>
+      <Field label="🌙 Evening"><textarea className="form-textarea" value={f.evening} onChange={s('evening')}/></Field>
+      <Field label="Transport"><input className="form-input" value={f.transport} onChange={s('transport')}/></Field>
+      <Field label="Notes"><textarea className="form-textarea" value={f.notes} onChange={s('notes')}/></Field>
+      <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:4 }}>
+        <button className="btn" onClick={onClose}>Cancel</button>
+        <button className="btn btn-teal" onClick={()=>onAdd({...f,id:Date.now().toString(),tripId})}>Save</button>
       </div>
-      <Field label="Day title"><input className="form-input" value={f.title} onChange={s('title')} placeholder="Arrival — Shinjuku"/></Field>
-      <Field label="City / location"><input className="form-input" value={f.location} onChange={s('location')} placeholder="Tokyo"/></Field>
-      <Field label="☀️ Morning"><textarea className="form-textarea" value={f.morning} onChange={s('morning')} placeholder="09:00 Meiji Shrine · 10:30 Harajuku..."/></Field>
-      <Field label="🌤 Afternoon"><textarea className="form-textarea" value={f.afternoon} onChange={s('afternoon')} placeholder="13:00 Lunch · 15:00 Shibuya..."/></Field>
-      <Field label="🌙 Evening"><textarea className="form-textarea" value={f.evening} onChange={s('evening')} placeholder="19:00 Dinner..."/></Field>
-      <Field label="Transport"><input className="form-input" value={f.transport} onChange={s('transport')} placeholder="Yamanote Line day pass"/></Field>
-      <Field label="Notes"><textarea className="form-textarea" value={f.notes} onChange={s('notes')} placeholder="Opening hours, pre-book..."/></Field>
-    </Modal>
+    </>
   );
 }
 
-// ── Documents View — with search, person filter, belongsTo ─────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TICKETS & DOCS — Travel Docs + Other Docs sub-tabs
+// ─────────────────────────────────────────────────────────────────────────────
 
-function AddDocModal({ tripId, onClose, onAdd, persons }) {
-  const [f, setF] = useState({ name:'', type:'Flight', date:'', time:'', ref:'', fromTo:'', operator:'', details:'', cost:'', status:'Confirmed', belongsTo:'' });
-  const s = k => e => setF(p => ({...p,[k]:e.target.value}));
+const TRAVEL_DOC_FIELDS = ['name','type','date','time','fromTo','operator','ref','details','cost','status','belongsTo'];
+
+function TravelDocRow({ doc, persons, onSave, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(doc);
+  const s = k => e => setDraft(p=>({...p,[k]:e.target.value}));
+  const personIdx = persons.findIndex(p=>p.name===doc.belongsTo);
+
+  if (editing) {
+    return (
+      <tr className="table-row-editing">
+        <td><input className="table-input" value={draft.name||''} onChange={s('name')}/><br/><select className="table-select" style={{marginTop:4}} value={draft.type||'Flight'} onChange={s('type')}>{['Flight','Train','Bus','Ferry','Visa','Pass','Other'].map(t=><option key={t}>{t}</option>)}</select></td>
+        <td><input className="table-input" type="date" value={draft.date||''} onChange={s('date')}/><input className="table-input" style={{marginTop:4}} type="time" value={draft.time||''} onChange={s('time')}/></td>
+        <td><input className="table-input" value={draft.fromTo||''} onChange={s('fromTo')}/></td>
+        <td><input className="table-input" value={draft.ref||''} onChange={s('ref')}/></td>
+        <td>
+          <select className="table-select" value={draft.belongsTo||''} onChange={s('belongsTo')}>
+            <option value="">Everyone</option>
+            {persons.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+          </select>
+        </td>
+        <td><input className="table-input" value={draft.cost||''} onChange={s('cost')}/></td>
+        <td>
+          <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+            <button className="btn btn-teal btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={()=>{onSave(draft);setEditing(false);}}>✓</button>
+            <button className="btn btn-sm" style={{fontSize:11,padding:'3px 8px'}} onClick={()=>setEditing(false)}>✕</button>
+            <button className="btn btn-sm card-delete-btn" style={{fontSize:11,padding:'3px 8px'}} onClick={onDelete}>🗑</button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
   return (
-    <Modal title="New ticket / document" onClose={onClose} onSave={()=>{onAdd({...f,id:Date.now().toString(),tripId});onClose();}}>
+    <tr>
+      <td><div className="td-primary">{doc.name}</div><div style={{marginTop:3}}><TypeBadge type={doc.type}/></div></td>
+      <td>{fmt(doc.date)}{doc.time?` · ${doc.time}`:''}</td>
+      <td>{doc.fromTo||'—'}</td>
+      <td style={{fontFamily:'var(--font-mono)',fontSize:12}}>{doc.ref||'—'}</td>
+      <td>{doc.belongsTo ? <span style={{display:'flex',alignItems:'center',gap:5}}><Avatar name={doc.belongsTo} size={20} index={personIdx}/><span style={{fontSize:12}}>{doc.belongsTo}</span></span> : <span style={{fontSize:12,color:'var(--ink-faint)'}}>Everyone</span>}</td>
+      <td>{doc.cost||'—'}</td>
+      <td>
+        <div style={{ display:'flex', gap:5, alignItems:'center' }}>
+          <span style={{fontSize:11,padding:'2px 7px',borderRadius:6,background:doc.status==='Confirmed'?'var(--teal-light)':'var(--paper-warm)',color:doc.status==='Confirmed'?'var(--teal)':'var(--ink-mid)'}}>{doc.status}</span>
+          <button className="card-edit-btn" style={{display:'flex'}} onClick={()=>{setDraft(doc);setEditing(true);}}>✏️</button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function AddTravelDocModal({ tripId, persons, onClose, onAdd }) {
+  const [f, setF] = useState({ name:'', type:'Flight', date:'', time:'', ref:'', fromTo:'', operator:'', details:'', cost:'', status:'Confirmed', belongsTo:'' });
+  const s = k => e => setF(p=>({...p,[k]:e.target.value}));
+  return (
+    <Modal title="New travel document" onClose={onClose} onSave={()=>{onAdd({...f,id:Date.now().toString(),tripId});onClose();}} wide>
       <div className="form-row">
         <Field label="Type"><select className="form-select" value={f.type} onChange={s('type')}>{['Flight','Train','Bus','Ferry','Visa','Pass','Other'].map(t=><option key={t}>{t}</option>)}</select></Field>
         <Field label="Status"><select className="form-select" value={f.status} onChange={s('status')}>{['Pending','Confirmed','Checked in','Used'].map(t=><option key={t}>{t}</option>)}</select></Field>
       </div>
-      <Field label="Name"><input className="form-input" value={f.name} onChange={s('name')} placeholder="BA178 — London to Tokyo"/></Field>
+      <Field label="Name / description"><input className="form-input" value={f.name} onChange={s('name')} placeholder="BA178 — London to Tokyo"/></Field>
       <div className="form-row">
         <Field label="Date"><input className="form-input" type="date" value={f.date} onChange={s('date')}/></Field>
         <Field label="Time"><input className="form-input" type="time" value={f.time} onChange={s('time')}/></Field>
       </div>
-      <Field label="From → To"><input className="form-input" value={f.fromTo} onChange={s('fromTo')} placeholder="LHR → NRT"/></Field>
       <div className="form-row">
+        <Field label="From → To"><input className="form-input" value={f.fromTo} onChange={s('fromTo')} placeholder="LHR → NRT"/></Field>
         <Field label="Operator"><input className="form-input" value={f.operator} onChange={s('operator')} placeholder="British Airways"/></Field>
+      </div>
+      <div className="form-row">
         <Field label="Confirmation ref"><input className="form-input" value={f.ref} onChange={s('ref')} placeholder="XY7GH2"/></Field>
+        <Field label="Cost"><input className="form-input" value={f.cost} onChange={s('cost')} placeholder="£680"/></Field>
       </div>
       <Field label="Seat / details"><input className="form-input" value={f.details} onChange={s('details')} placeholder="Seat 34A · 1 checked bag"/></Field>
+      <Field label="Belongs to">
+        <select className="form-select" value={f.belongsTo} onChange={s('belongsTo')}>
+          <option value="">— Everyone —</option>
+          {persons.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+        </select>
+      </Field>
+    </Modal>
+  );
+}
+
+// OTHER DOCS
+
+function OtherDocCard({ doc, persons, onSave, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(doc);
+  const s = k => e => setDraft(p=>({...p,[k]:e.target.value}));
+  const personIdx = persons.findIndex(p=>p.name===doc.belongsTo);
+
+  const CAT_ICONS = { Passport:'🛂', Visa:'📋', 'Travel Insurance':'🛡️', 'Health / Vaccination':'💉', Receipt:'🧾', 'Booking Confirmation':'✅', Itinerary:'🗺️', 'Emergency Contact':'🆘', Other:'📄' };
+
+  async function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const data = await fileToBase64(file);
+    setDraft(p=>({...p, fileData:data, fileLabel:file.name}));
+  }
+
+  return (
+    <div className="other-doc-card" style={{ position:'relative' }}>
+      {!editing && (
+        <div className="card-edit-bar" style={{ display:'flex' }}>
+          <button className="card-edit-btn" onClick={()=>{setDraft(doc);setEditing(true);}}>✏️</button>
+          <button className="card-edit-btn card-delete-btn" onClick={onDelete}>🗑</button>
+        </div>
+      )}
+      {editing ? (
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <div className="edit-form-grid">
+            <Field label="Name"><input className="form-input" value={draft.name||''} onChange={s('name')}/></Field>
+            <Field label="Category">
+              <select className="form-select" value={draft.category||'Other'} onChange={s('category')}>
+                {OTHER_DOC_CATEGORIES.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </Field>
+            <Field label="Reference / number"><input className="form-input" value={draft.ref||''} onChange={s('ref')}/></Field>
+            <Field label="Issued by"><input className="form-input" value={draft.issuedBy||''} onChange={s('issuedBy')}/></Field>
+            <Field label="Expiry date"><input className="form-input" type="date" value={draft.expiryDate||''} onChange={s('expiryDate')}/></Field>
+            <Field label="Belongs to">
+              <select className="form-select" value={draft.belongsTo||''} onChange={s('belongsTo')}>
+                <option value="">— Everyone —</option>
+                {persons.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+              </select>
+            </Field>
+            <div className="full-width"><Field label="Notes"><textarea className="form-textarea" value={draft.notes||''} onChange={s('notes')}/></Field></div>
+          </div>
+          <AttachmentField
+            fileData={draft.fileData} fileLabel={draft.fileLabel} link={draft.link}
+            onFileChange={handleFile}
+            onLinkChange={v=>setDraft(p=>({...p,link:v}))}
+          />
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+            <button className="btn btn-sm" onClick={()=>setEditing(false)}>Cancel</button>
+            <button className="btn btn-teal btn-sm" onClick={()=>{onSave(draft);setEditing(false);}}>Save changes</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="doc-icon">{CAT_ICONS[doc.category]||'📄'}</div>
+          <div className="doc-title">{doc.name}</div>
+          <div className="doc-meta">
+            <CategoryBadge cat={doc.category} label={doc.category}/>
+            {doc.expiryDate && <span style={{ marginLeft:6, fontSize:11, color: new Date(doc.expiryDate) < new Date() ? 'var(--rose)' : 'var(--ink-light)' }}>Expires {fmt(doc.expiryDate)}</span>}
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, fontSize:12, color:'var(--ink-mid)', marginBottom:8 }}>
+            {doc.ref && <div><span style={{color:'var(--ink-light)'}}>Ref</span><br/><span style={{fontFamily:'var(--font-mono)',fontSize:11}}>{doc.ref}</span></div>}
+            {doc.issuedBy && <div><span style={{color:'var(--ink-light)'}}>Issued by</span><br/>{doc.issuedBy}</div>}
+            {doc.belongsTo && <div><span style={{color:'var(--ink-light)'}}>Belongs to</span><br/><span style={{display:'flex',alignItems:'center',gap:4}}><Avatar name={doc.belongsTo} size={16} index={personIdx}/>{doc.belongsTo}</span></div>}
+          </div>
+          {doc.notes && <div style={{ fontSize:12, color:'var(--ink-mid)', marginBottom:6, lineHeight:1.5 }}>{doc.notes}</div>}
+          <AttachmentChips fileData={doc.fileData} fileLabel={doc.fileLabel} link={doc.link}/>
+        </>
+      )}
+    </div>
+  );
+}
+
+function AddOtherDocModal({ tripId, persons, onClose, onAdd }) {
+  const [f, setF] = useState({ name:'', category:'Passport', ref:'', issuedBy:'', expiryDate:'', belongsTo:'', notes:'', fileData:'', fileLabel:'', link:'' });
+  const s = k => e => setF(p=>({...p,[k]:e.target.value}));
+  async function handleFile(e) {
+    const file = e.target.files[0]; if(!file) return;
+    const data = await fileToBase64(file);
+    setF(p=>({...p,fileData:data,fileLabel:file.name}));
+  }
+  return (
+    <Modal title="New document" onClose={onClose} onSave={()=>{onAdd({...f,id:Date.now().toString(),tripId});onClose();}} wide>
       <div className="form-row">
-        <Field label="Cost"><input className="form-input" value={f.cost} onChange={s('cost')} placeholder="£680"/></Field>
+        <Field label="Name"><input className="form-input" value={f.name} onChange={s('name')} placeholder="UK Passport — Rubes"/></Field>
+        <Field label="Category"><select className="form-select" value={f.category} onChange={s('category')}>{OTHER_DOC_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></Field>
+      </div>
+      <div className="form-row">
+        <Field label="Reference / number"><input className="form-input" value={f.ref} onChange={s('ref')} placeholder="Passport number, policy ref…"/></Field>
+        <Field label="Issued by"><input className="form-input" value={f.issuedBy} onChange={s('issuedBy')} placeholder="UK Home Office, AXA…"/></Field>
+      </div>
+      <div className="form-row">
+        <Field label="Expiry date"><input className="form-input" type="date" value={f.expiryDate} onChange={s('expiryDate')}/></Field>
         <Field label="Belongs to">
           <select className="form-select" value={f.belongsTo} onChange={s('belongsTo')}>
             <option value="">— Everyone —</option>
@@ -349,196 +425,277 @@ function AddDocModal({ tripId, onClose, onAdd, persons }) {
           </select>
         </Field>
       </div>
+      <Field label="Notes"><textarea className="form-textarea" value={f.notes} onChange={s('notes')} placeholder="Emergency numbers, important instructions…"/></Field>
+      <AttachmentField fileData={f.fileData} fileLabel={f.fileLabel} link={f.link} onFileChange={handleFile} onLinkChange={v=>setF(p=>({...p,link:v}))}/>
     </Modal>
   );
 }
 
-function DocsView({ tripId, docs, persons, onAddDoc }) {
-  const [showAdd, setShowAdd] = useState(false);
+function DocsView({ tripId, docs, otherDocs, persons, onAddDoc, onUpdateDoc, onDeleteDoc, onAddOtherDoc, onUpdateOtherDoc, onDeleteOtherDoc }) {
+  const [subTab, setSubTab] = useState('travel');
+  const [showAddTravel, setShowAddTravel] = useState(false);
+  const [showAddOther, setShowAddOther] = useState(false);
   const [query, setQuery] = useState('');
   const [personFilter, setPersonFilter] = useState('');
 
-  const tripDocs = useMemo(() => {
+  const tripDocs = useMemo(()=>{
     let d = docs.filter(d=>d.tripId===tripId);
-    if (personFilter) d = d.filter(d => (d.belongsTo||'').toLowerCase().includes(personFilter.toLowerCase()));
-    if (query) d = d.filter(d => matchesSearch(d, query));
+    if (personFilter) d = d.filter(d=>(d.belongsTo||'').toLowerCase().includes(personFilter.toLowerCase()));
+    if (query) d = d.filter(d=>matchesSearch(d,query));
     return d.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  }, [docs, tripId, query, personFilter]);
+  },[docs,tripId,query,personFilter]);
+
+  const tripOtherDocs = useMemo(()=>{
+    let d = otherDocs.filter(d=>d.tripId===tripId);
+    if (personFilter) d = d.filter(d=>(d.belongsTo||'').toLowerCase().includes(personFilter.toLowerCase()));
+    if (query) d = d.filter(d=>matchesSearch(d,query));
+    return d;
+  },[otherDocs,tripId,query,personFilter]);
 
   return (
     <>
+      <div className="sub-tab-bar">
+        <button className={`sub-tab ${subTab==='travel'?'active':''}`} onClick={()=>setSubTab('travel')}>✈️ Travel docs</button>
+        <button className={`sub-tab ${subTab==='other'?'active':''}`} onClick={()=>setSubTab('other')}>📁 Other docs</button>
+      </div>
+
       <SearchFilterBar query={query} onQuery={setQuery} persons={persons} activePerson={personFilter} onPerson={setPersonFilter}/>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-        <span className="result-count">{tripDocs.length} result{tripDocs.length!==1?'s':''}</span>
-        <button className="btn btn-teal btn-sm" onClick={()=>setShowAdd(true)}><Plus size={14}/> Add ticket</button>
-      </div>
-      {tripDocs.length===0
-        ? <div className="empty-state"><div className="empty-icon">🎫</div><h3>{query||personFilter?'No results':'No documents yet'}</h3><p>{query||personFilter?'Try a different search or filter.':'Add flights, trains, passes and visas here.'}</p></div>
-        : <div className="card" style={{ overflow:'hidden' }}>
-          <table className="data-table">
-            <thead><tr><th>Name</th><th>Date</th><th>Route</th><th>Ref</th><th>Belongs to</th><th>Cost</th><th>Status</th></tr></thead>
-            <tbody>
-              {tripDocs.map(doc => {
-                const personIdx = persons.findIndex(p=>p.name===doc.belongsTo);
-                return (
-                  <tr key={doc.id}>
-                    <td><div className="td-primary">{doc.name}</div><div style={{marginTop:3}}><TypeBadge type={doc.type}/></div></td>
-                    <td>{fmt(doc.date)}{doc.time?` · ${doc.time}`:''}</td>
-                    <td>{doc.fromTo||'—'}</td>
-                    <td style={{ fontFamily:'var(--font-mono)', fontSize:12 }}>{doc.ref||'—'}</td>
-                    <td>
-                      {doc.belongsTo
-                        ? <span style={{ display:'flex', alignItems:'center', gap:5 }}><Avatar name={doc.belongsTo} size={20} index={personIdx}/><span style={{fontSize:12}}>{doc.belongsTo}</span></span>
-                        : <span style={{ fontSize:12, color:'var(--ink-faint)' }}>Everyone</span>}
-                    </td>
-                    <td>{doc.cost||'—'}</td>
-                    <td><span style={{ fontSize:11, padding:'2px 7px', borderRadius:6, background:doc.status==='Confirmed'?'var(--teal-light)':'var(--paper-warm)', color:doc.status==='Confirmed'?'var(--teal)':'var(--ink-mid)' }}>{doc.status}</span></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      }
-      {showAdd && <AddDocModal tripId={tripId} onClose={()=>setShowAdd(false)} onAdd={d=>{onAddDoc(d);setShowAdd(false);}} persons={persons}/>}
-    </>
-  );
-}
 
-// ── Stays View — with map, search, person filter ───────────────────────────
+      {subTab==='travel' && (
+        <>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+            <span className="result-count">{tripDocs.length} result{tripDocs.length!==1?'s':''}</span>
+            <button className="btn btn-teal btn-sm" onClick={()=>setShowAddTravel(true)}><Plus size={14}/> Add ticket</button>
+          </div>
+          {tripDocs.length===0
+            ? <div className="empty-state"><div className="empty-icon">🎫</div><h3>{query||personFilter?'No results':'No travel docs yet'}</h3></div>
+            : <div className="card" style={{ overflow:'hidden' }}>
+              <table className="data-table">
+                <thead><tr><th>Name</th><th>Date</th><th>Route</th><th>Ref</th><th>Belongs to</th><th>Cost</th><th>Status</th></tr></thead>
+                <tbody>
+                  {tripDocs.map(doc=>(
+                    <TravelDocRow key={doc.id} doc={doc} persons={persons}
+                      onSave={updated=>onUpdateDoc(updated)}
+                      onDelete={()=>onDeleteDoc(doc.id)}/>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          }
+          {showAddTravel && <AddTravelDocModal tripId={tripId} persons={persons} onClose={()=>setShowAddTravel(false)} onAdd={onAddDoc}/>}
+        </>
+      )}
 
-function AddStayModal({ tripId, onClose, onAdd, persons }) {
-  const [f, setF] = useState({ name:'', type:'Hotel', checkIn:'', checkOut:'', address:'', mapsUrl:'', lat:'', lng:'', ref:'', cost:'', paid:'No', checkInNotes:'', extras:'', belongsTo:'' });
-  const s = k => e => setF(p => ({...p,[k]:e.target.value}));
-  function parseMapUrl(url) {
-    const m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || url.match(/ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
-    if (m) setF(p => ({...p, mapsUrl:url, lat:m[1], lng:m[2]}));
-    else setF(p => ({...p, mapsUrl:url}));
-  }
-  return (
-    <Modal title="New stay" onClose={onClose} onSave={()=>{onAdd({...f,id:Date.now().toString(),tripId});onClose();}}>
-      <div className="form-row">
-        <Field label="Type"><select className="form-select" value={f.type} onChange={s('type')}>{['Hotel','Airbnb','Hostel','Rental','Other'].map(t=><option key={t}>{t}</option>)}</select></Field>
-        <Field label="Prepaid?"><select className="form-select" value={f.paid} onChange={s('paid')}><option value="Yes">Yes — prepaid</option><option value="No">Pay on arrival</option></select></Field>
-      </div>
-      <Field label="Name"><input className="form-input" value={f.name} onChange={s('name')} placeholder="Ace Hotel Tokyo"/></Field>
-      <div className="form-row">
-        <Field label="Check-in"><input className="form-input" type="date" value={f.checkIn} onChange={s('checkIn')}/></Field>
-        <Field label="Check-out"><input className="form-input" type="date" value={f.checkOut} onChange={s('checkOut')}/></Field>
-      </div>
-      <Field label="Address"><input className="form-input" value={f.address} onChange={s('address')} placeholder="Full address"/></Field>
-      <Field label="Google Maps link">
-        <input className="form-input" value={f.mapsUrl} onChange={e=>parseMapUrl(e.target.value)} placeholder="Paste Google Maps URL — lat/lng auto-extracted"/>
-      </Field>
-      {(f.lat||f.lng) && <div style={{ fontSize:12, color:'var(--teal)', background:'var(--teal-light)', padding:'6px 10px', borderRadius:'var(--radius)' }}>✓ Coordinates: {f.lat}, {f.lng}</div>}
-      <div className="form-row">
-        <Field label="Confirmation ref"><input className="form-input" value={f.ref} onChange={s('ref')} placeholder="ACE-449012"/></Field>
-        <Field label="Total cost"><input className="form-input" value={f.cost} onChange={s('cost')} placeholder="£860"/></Field>
-      </div>
-      <Field label="Belongs to">
-        <select className="form-select" value={f.belongsTo} onChange={s('belongsTo')}>
-          <option value="">— Everyone —</option>
-          {persons.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
-        </select>
-      </Field>
-      <Field label="Check-in notes"><textarea className="form-textarea" value={f.checkInNotes} onChange={s('checkInNotes')} placeholder="Key code, self check-in..."/></Field>
-      <Field label="Extras"><input className="form-input" value={f.extras} onChange={s('extras')} placeholder="Wifi: GuestNet · Breakfast included"/></Field>
-    </Modal>
-  );
-}
-
-function StaysView({ tripId, stays, persons, onAddStay }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [query, setQuery] = useState('');
-  const [personFilter, setPersonFilter] = useState('');
-  const [mapStay, setMapStay] = useState(null);
-
-  const tripStays = useMemo(() => {
-    let s = stays.filter(s=>s.tripId===tripId);
-    if (personFilter) s = s.filter(s => (s.belongsTo||'').toLowerCase().includes(personFilter.toLowerCase()));
-    if (query) s = s.filter(s => matchesSearch(s, query));
-    return s.sort((a,b)=>(a.checkIn||'').localeCompare(b.checkIn||''));
-  }, [stays, tripId, query, personFilter]);
-
-  return (
-    <>
-      <SearchFilterBar query={query} onQuery={setQuery} persons={persons} activePerson={personFilter} onPerson={setPersonFilter}/>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-        <span className="result-count">{tripStays.length} result{tripStays.length!==1?'s':''}</span>
-        <button className="btn btn-teal btn-sm" onClick={()=>setShowAdd(true)}><Plus size={14}/> Add stay</button>
-      </div>
-      {tripStays.length===0
-        ? <div className="empty-state"><div className="empty-icon">🏨</div><h3>{query||personFilter?'No results':'No stays yet'}</h3><p>{query||personFilter?'Try a different search or filter.':'Add your hotels and Airbnbs here.'}</p></div>
-        : <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          {tripStays.map(stay => {
-            const stayPersons = (stay.belongsTo||'').split(',').map(n=>n.trim()).filter(Boolean);
-            return (
-              <div key={stay.id} className="card" style={{ padding:'16px 18px' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
-                  <div>
-                    <div style={{ fontFamily:'var(--font-display)', fontSize:16, fontWeight:600, color:'var(--ink)' }}>{stay.name}</div>
-                    <div style={{ fontSize:12, color:'var(--ink-light)', marginTop:2 }}>{fmt(stay.checkIn)} → {fmt(stay.checkOut)} · {nights(stay.checkIn,stay.checkOut)} nights</div>
-                  </div>
-                  <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-                    <TypeBadge type={stay.type}/>
-                    {(stay.lat||stay.mapsUrl) && (
-                      <button className="stay-map-btn" onClick={()=>setMapStay(stay)}><MapPin size={12}/> Map</button>
-                    )}
-                    {stay.mapsUrl && <a href={stay.mapsUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" title="Open in Maps"><ExternalLink size={13}/></a>}
-                  </div>
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, fontSize:12, color:'var(--ink-mid)' }}>
-                  {stay.address && <div><span style={{color:'var(--ink-light)'}}>Address</span><br/>{stay.address}</div>}
-                  {stay.ref && <div><span style={{color:'var(--ink-light)'}}>Confirmation</span><br/><span style={{fontFamily:'var(--font-mono)',fontSize:11}}>{stay.ref}</span></div>}
-                  {stay.cost && <div><span style={{color:'var(--ink-light)'}}>Cost</span><br/>{stay.cost} · {stay.paid==='Yes'?'✓ Prepaid':'Pay on arrival'}</div>}
-                  {stay.extras && <div><span style={{color:'var(--ink-light)'}}>Extras</span><br/>{stay.extras}</div>}
-                </div>
-                {stayPersons.length>0 && (
-                  <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
-                    <span style={{ fontSize:11, color:'var(--ink-light)' }}>Staying:</span>
-                    {stayPersons.map((name,i)=>(
-                      <span key={i} style={{ display:'flex', alignItems:'center', gap:4, fontSize:12, color:'var(--ink-mid)' }}>
-                        <Avatar name={name} size={18} index={i}/> {name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {stay.checkInNotes && <div style={{ marginTop:10, padding:'8px 12px', background:'var(--amber-light)', borderRadius:8, fontSize:12, color:'var(--amber)' }}><strong>Check-in:</strong> {stay.checkInNotes}</div>}
-              </div>
-            );
-          })}
-        </div>
-      }
-      {showAdd && <AddStayModal tripId={tripId} onClose={()=>setShowAdd(false)} onAdd={s=>{onAddStay(s);setShowAdd(false);}} persons={persons}/>}
-      {mapStay && (
-        <MapModal
-          title={mapStay.name}
-          subtitle={`${fmt(mapStay.checkIn)} → ${fmt(mapStay.checkOut)} · ${nights(mapStay.checkIn,mapStay.checkOut)} nights`}
-          items={[{ id:mapStay.id, name:mapStay.name, subtitle:mapStay.address, badge:mapStay.type, mapsUrl:mapStay.mapsUrl, lat:mapStay.lat, lng:mapStay.lng, notes:mapStay.checkInNotes, dotBg:'var(--teal-light)', dotColor:'var(--teal)' }]}
-          onClose={()=>setMapStay(null)}
-        />
+      {subTab==='other' && (
+        <>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+            <span className="result-count">{tripOtherDocs.length} result{tripOtherDocs.length!==1?'s':''}</span>
+            <button className="btn btn-teal btn-sm" onClick={()=>setShowAddOther(true)}><Plus size={14}/> Add document</button>
+          </div>
+          {tripOtherDocs.length===0
+            ? <div className="empty-state"><div className="empty-icon">📁</div><h3>{query||personFilter?'No results':'No documents yet'}</h3><p>Add passports, visas, insurance, receipts and more.</p></div>
+            : <div className="other-docs-grid">
+              {tripOtherDocs.map(doc=>(
+                <OtherDocCard key={doc.id} doc={doc} persons={persons}
+                  onSave={updated=>onUpdateOtherDoc(updated)}
+                  onDelete={()=>onDeleteOtherDoc(doc.id)}/>
+              ))}
+            </div>
+          }
+          {showAddOther && <AddOtherDocModal tripId={tripId} persons={persons} onClose={()=>setShowAddOther(false)} onAdd={onAddOtherDoc}/>}
+        </>
       )}
     </>
   );
 }
 
-// ── Personnels View ────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// STAYS VIEW
+// ─────────────────────────────────────────────────────────────────────────────
 
-function AddPersonnelModal({ tripId, onClose, onAdd }) {
-  const [f, setF] = useState({ name:'', role:'Traveller', email:'', phone:'' });
-  const s = k => e => setF(p => ({...p,[k]:e.target.value}));
+function StayCard({ stay, persons, onSave, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(stay);
+  const [mapOpen, setMapOpen] = useState(false);
+  const s = k => e => setDraft(p=>({...p,[k]:e.target.value}));
+  const stayPersons = (stay.belongsTo||'').split(',').map(n=>n.trim()).filter(Boolean);
+
+  function parseMapUrl(url) {
+    const m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || url.match(/ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (m) setDraft(p=>({...p,mapsUrl:url,lat:m[1],lng:m[2]}));
+    else setDraft(p=>({...p,mapsUrl:url}));
+  }
+
   return (
-    <Modal title="Add person" onClose={onClose} onSave={()=>{onAdd({...f,id:Date.now().toString(),tripId});onClose();}}>
-      <Field label="Full name"><input className="form-input" value={f.name} onChange={s('name')} placeholder="Aisha Patel"/></Field>
-      <Field label="Role"><select className="form-select" value={f.role} onChange={s('role')}>{['Trip organiser','Traveller','Local contact','Emergency contact'].map(r=><option key={r}>{r}</option>)}</select></Field>
-      <Field label="Email"><input className="form-input" type="email" value={f.email} onChange={s('email')} placeholder="aisha@email.com"/></Field>
-      <Field label="Phone"><input className="form-input" value={f.phone} onChange={s('phone')} placeholder="+44 7700 900001"/></Field>
+    <div className="card" style={{ padding:'16px 18px', position:'relative' }}>
+      {!editing && (
+        <div className="card-edit-bar" style={{ display:'flex' }}>
+          <button className="card-edit-btn" onClick={()=>{setDraft(stay);setEditing(true);}}>✏️</button>
+          <button className="card-edit-btn card-delete-btn" onClick={onDelete}>🗑</button>
+        </div>
+      )}
+      {editing ? (
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <div className="edit-form-grid">
+            <Field label="Name"><input className="form-input" value={draft.name||''} onChange={s('name')}/></Field>
+            <Field label="Type"><select className="form-select" value={draft.type||'Hotel'} onChange={s('type')}>{['Hotel','Airbnb','Hostel','Rental','Other'].map(t=><option key={t}>{t}</option>)}</select></Field>
+            <Field label="Check-in"><input className="form-input" type="date" value={draft.checkIn||''} onChange={s('checkIn')}/></Field>
+            <Field label="Check-out"><input className="form-input" type="date" value={draft.checkOut||''} onChange={s('checkOut')}/></Field>
+            <div className="full-width"><Field label="Address"><input className="form-input" value={draft.address||''} onChange={s('address')}/></Field></div>
+            <div className="full-width">
+              <Field label="Google Maps link">
+                <input className="form-input" value={draft.mapsUrl||''} onChange={e=>parseMapUrl(e.target.value)} placeholder="Paste URL — coordinates auto-extracted"/>
+              </Field>
+            </div>
+            <Field label="Lat"><input className="form-input" value={draft.lat||''} onChange={s('lat')}/></Field>
+            <Field label="Lng"><input className="form-input" value={draft.lng||''} onChange={s('lng')}/></Field>
+            <Field label="Confirmation ref"><input className="form-input" value={draft.ref||''} onChange={s('ref')}/></Field>
+            <Field label="Cost"><input className="form-input" value={draft.cost||''} onChange={s('cost')}/></Field>
+            <Field label="Prepaid?"><select className="form-select" value={draft.paid||'No'} onChange={s('paid')}><option value="Yes">Yes — prepaid</option><option value="No">Pay on arrival</option></select></Field>
+            <Field label="Belongs to (comma-separated)"><input className="form-input" value={draft.belongsTo||''} onChange={s('belongsTo')} placeholder="Rubes, Aisha"/></Field>
+            <div className="full-width"><Field label="Check-in notes"><textarea className="form-textarea" value={draft.checkInNotes||''} onChange={s('checkInNotes')}/></Field></div>
+            <div className="full-width"><Field label="Extras (wifi, breakfast…)"><input className="form-input" value={draft.extras||''} onChange={s('extras')}/></Field></div>
+          </div>
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+            <button className="btn btn-sm" onClick={()=>setEditing(false)}>Cancel</button>
+            <button className="btn btn-teal btn-sm" onClick={()=>{onSave(draft);setEditing(false);}}>Save changes</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+            <div>
+              <div style={{ fontFamily:'var(--font-display)', fontSize:16, fontWeight:600, color:'var(--ink)' }}>{stay.name}</div>
+              <div style={{ fontSize:12, color:'var(--ink-light)', marginTop:2 }}>{fmt(stay.checkIn)} → {fmt(stay.checkOut)} · {nights(stay.checkIn,stay.checkOut)} nights</div>
+            </div>
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+              <TypeBadge type={stay.type}/>
+              {(stay.lat||stay.mapsUrl) && <button className="stay-map-btn" onClick={()=>setMapOpen(true)}><MapPin size={12}/> Map</button>}
+              {stay.mapsUrl && <a href={stay.mapsUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm"><ExternalLink size={13}/></a>}
+            </div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, fontSize:12, color:'var(--ink-mid)' }}>
+            {stay.address && <div><span style={{color:'var(--ink-light)'}}>Address</span><br/>{stay.address}</div>}
+            {stay.ref && <div><span style={{color:'var(--ink-light)'}}>Confirmation</span><br/><span style={{fontFamily:'var(--font-mono)',fontSize:11}}>{stay.ref}</span></div>}
+            {stay.cost && <div><span style={{color:'var(--ink-light)'}}>Cost</span><br/>{stay.cost} · {stay.paid==='Yes'?'✓ Prepaid':'Pay on arrival'}</div>}
+            {stay.extras && <div><span style={{color:'var(--ink-light)'}}>Extras</span><br/>{stay.extras}</div>}
+          </div>
+          {stayPersons.length>0 && <div style={{ marginTop:10, display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+            <span style={{ fontSize:11, color:'var(--ink-light)' }}>Staying:</span>
+            {stayPersons.map((name,i)=><span key={i} style={{ display:'flex', alignItems:'center', gap:4, fontSize:12, color:'var(--ink-mid)' }}><Avatar name={name} size={18} index={i}/>{name}</span>)}
+          </div>}
+          {stay.checkInNotes && <div style={{ marginTop:10, padding:'8px 12px', background:'var(--amber-light)', borderRadius:8, fontSize:12, color:'var(--amber)' }}><strong>Check-in:</strong> {stay.checkInNotes}</div>}
+        </>
+      )}
+      {mapOpen && <MapModal
+        title={stay.name}
+        subtitle={`${fmt(stay.checkIn)} → ${fmt(stay.checkOut)} · ${nights(stay.checkIn,stay.checkOut)} nights`}
+        items={[{ id:stay.id, name:stay.name, subtitle:stay.address, badge:stay.type, mapsUrl:stay.mapsUrl, lat:stay.lat, lng:stay.lng, notes:stay.checkInNotes, dotBg:'var(--teal-light)', dotColor:'var(--teal)' }]}
+        onClose={()=>setMapOpen(false)}/>}
+    </div>
+  );
+}
+
+function AddStayModal({ tripId, persons, onClose, onAdd }) {
+  const [f, setF] = useState({ name:'', type:'Hotel', checkIn:'', checkOut:'', address:'', mapsUrl:'', lat:'', lng:'', ref:'', cost:'', paid:'No', checkInNotes:'', extras:'', belongsTo:'' });
+  const s = k => e => setF(p=>({...p,[k]:e.target.value}));
+  function parseMapUrl(url) {
+    const m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || url.match(/ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (m) setF(p=>({...p,mapsUrl:url,lat:m[1],lng:m[2]}));
+    else setF(p=>({...p,mapsUrl:url}));
+  }
+  return (
+    <Modal title="New stay" onClose={onClose} onSave={()=>{onAdd({...f,id:Date.now().toString(),tripId});onClose();}} wide>
+      <div className="form-row"><Field label="Type"><select className="form-select" value={f.type} onChange={s('type')}>{['Hotel','Airbnb','Hostel','Rental','Other'].map(t=><option key={t}>{t}</option>)}</select></Field><Field label="Prepaid?"><select className="form-select" value={f.paid} onChange={s('paid')}><option value="Yes">Yes</option><option value="No">Pay on arrival</option></select></Field></div>
+      <Field label="Name"><input className="form-input" value={f.name} onChange={s('name')} placeholder="Ace Hotel Tokyo"/></Field>
+      <div className="form-row"><Field label="Check-in"><input className="form-input" type="date" value={f.checkIn} onChange={s('checkIn')}/></Field><Field label="Check-out"><input className="form-input" type="date" value={f.checkOut} onChange={s('checkOut')}/></Field></div>
+      <Field label="Address"><input className="form-input" value={f.address} onChange={s('address')}/></Field>
+      <Field label="Google Maps link"><input className="form-input" value={f.mapsUrl} onChange={e=>parseMapUrl(e.target.value)} placeholder="Paste URL — coordinates auto-extracted"/></Field>
+      {(f.lat||f.lng)&&<div style={{fontSize:12,color:'var(--teal)',background:'var(--teal-light)',padding:'6px 10px',borderRadius:'var(--radius)'}}>✓ Coordinates: {f.lat}, {f.lng}</div>}
+      <div className="form-row"><Field label="Confirmation ref"><input className="form-input" value={f.ref} onChange={s('ref')}/></Field><Field label="Total cost"><input className="form-input" value={f.cost} onChange={s('cost')}/></Field></div>
+      <Field label="Belongs to (comma-separated)"><input className="form-input" value={f.belongsTo} onChange={s('belongsTo')} placeholder="Rubes, Aisha, Marco"/></Field>
+      <Field label="Check-in notes"><textarea className="form-textarea" value={f.checkInNotes} onChange={s('checkInNotes')}/></Field>
+      <Field label="Extras"><input className="form-input" value={f.extras} onChange={s('extras')} placeholder="Wifi: GuestNet · Breakfast included"/></Field>
     </Modal>
   );
 }
 
-function PersonnelsView({ tripId, personnels, onAddPersonnel }) {
+function StaysView({ tripId, stays, persons, onAddStay, onUpdateStay, onDeleteStay }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [query, setQuery] = useState('');
+  const [personFilter, setPersonFilter] = useState('');
+  const filtered = useMemo(()=>{
+    let s = stays.filter(s=>s.tripId===tripId);
+    if (personFilter) s = s.filter(s=>(s.belongsTo||'').toLowerCase().includes(personFilter.toLowerCase()));
+    if (query) s = s.filter(s=>matchesSearch(s,query));
+    return s.sort((a,b)=>(a.checkIn||'').localeCompare(b.checkIn||''));
+  },[stays,tripId,query,personFilter]);
+
+  return (
+    <>
+      <SearchFilterBar query={query} onQuery={setQuery} persons={persons} activePerson={personFilter} onPerson={setPersonFilter}/>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+        <span className="result-count">{filtered.length} result{filtered.length!==1?'s':''}</span>
+        <button className="btn btn-teal btn-sm" onClick={()=>setShowAdd(true)}><Plus size={14}/> Add stay</button>
+      </div>
+      {filtered.length===0
+        ? <div className="empty-state"><div className="empty-icon">🏨</div><h3>{query||personFilter?'No results':'No stays yet'}</h3></div>
+        : <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          {filtered.map(stay=><StayCard key={stay.id} stay={stay} persons={persons} onSave={onUpdateStay} onDelete={()=>onDeleteStay(stay.id)}/>)}
+        </div>
+      }
+      {showAdd && <AddStayModal tripId={tripId} persons={persons} onClose={()=>setShowAdd(false)} onAdd={s=>{onAddStay(s);setShowAdd(false);}}/>}
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERSONNELS VIEW
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PersonnelCard({ person, index, onSave, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(person);
+  const ac = avatarColor(person.name, index);
+  const s = k => e => setDraft(p=>({...p,[k]:e.target.value}));
+
+  return (
+    <div className="personnel-card" style={{ position:'relative' }}>
+      {!editing && (
+        <div className="card-edit-bar" style={{ display:'flex' }}>
+          <button className="card-edit-btn" onClick={()=>{setDraft(person);setEditing(true);}}>✏️</button>
+          <button className="card-edit-btn card-delete-btn" onClick={onDelete}>🗑</button>
+        </div>
+      )}
+      {editing ? (
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <Field label="Full name"><input className="form-input" value={draft.name||''} onChange={s('name')}/></Field>
+          <Field label="Role"><select className="form-select" value={draft.role||'Traveller'} onChange={s('role')}>{['Trip organiser','Traveller','Local contact','Emergency contact'].map(r=><option key={r}>{r}</option>)}</select></Field>
+          <Field label="Email"><input className="form-input" type="email" value={draft.email||''} onChange={s('email')}/></Field>
+          <Field label="Phone"><input className="form-input" value={draft.phone||''} onChange={s('phone')}/></Field>
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+            <button className="btn btn-sm" onClick={()=>setEditing(false)}>Cancel</button>
+            <button className="btn btn-teal btn-sm" onClick={()=>{onSave(draft);setEditing(false);}}>Save changes</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <div className="personnel-avatar-lg" style={{ background:ac.bg, color:ac.color }}>{initials(person.name)}</div>
+            <div><div className="personnel-name">{person.name}</div><div className="personnel-role">{person.role}</div></div>
+          </div>
+          {person.email && <div className="personnel-detail" style={{ marginTop:8 }}>✉️ {person.email}</div>}
+          {person.phone && <div className="personnel-detail">📞 {person.phone}</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PersonnelsView({ tripId, personnels, onAddPersonnel, onUpdatePersonnel, onDeletePersonnel }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [f, setF] = useState({ name:'', role:'Traveller', email:'', phone:'' });
+  const s = k => e => setF(p=>({...p,[k]:e.target.value}));
   const tripPersons = personnels.filter(p=>p.tripId===tripId);
   return (
     <>
@@ -546,34 +703,28 @@ function PersonnelsView({ tripId, personnels, onAddPersonnel }) {
         <button className="btn btn-teal btn-sm" onClick={()=>setShowAdd(true)}><Plus size={14}/> Add person</button>
       </div>
       {tripPersons.length===0
-        ? <div className="empty-state"><div className="empty-icon">👥</div><h3>No people yet</h3><p>Add your travel companions to sort tickets and stays by person.</p></div>
+        ? <div className="empty-state"><div className="empty-icon">👥</div><h3>No people yet</h3><p>Add travel companions to enable person filters in all tabs.</p></div>
         : <div className="personnel-grid">
-          {tripPersons.map((p,i) => {
-            const ac = avatarColor(p.name, i);
-            return (
-              <div key={p.id} className="personnel-card">
-                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                  <div className="personnel-avatar-lg" style={{ background:ac.bg, color:ac.color }}>{initials(p.name)}</div>
-                  <div>
-                    <div className="personnel-name">{p.name}</div>
-                    <div className="personnel-role">{p.role}</div>
-                  </div>
-                </div>
-                {p.email && <div className="personnel-detail">✉️ {p.email}</div>}
-                {p.phone && <div className="personnel-detail">📞 {p.phone}</div>}
-              </div>
-            );
-          })}
+          {tripPersons.map((p,i)=><PersonnelCard key={p.id} person={p} index={i} onSave={onUpdatePersonnel} onDelete={()=>onDeletePersonnel(p.id)}/>)}
         </div>
       }
-      {showAdd && <AddPersonnelModal tripId={tripId} onClose={()=>setShowAdd(false)} onAdd={p=>{onAddPersonnel(p);setShowAdd(false);}}/>}
+      {showAdd && (
+        <Modal title="Add person" onClose={()=>setShowAdd(false)} onSave={()=>{onAddPersonnel({...f,id:Date.now().toString(),tripId});setShowAdd(false);}}>
+          <Field label="Full name"><input className="form-input" value={f.name} onChange={s('name')} placeholder="Aisha Patel"/></Field>
+          <Field label="Role"><select className="form-select" value={f.role} onChange={s('role')}>{['Trip organiser','Traveller','Local contact','Emergency contact'].map(r=><option key={r}>{r}</option>)}</select></Field>
+          <Field label="Email"><input className="form-input" type="email" value={f.email} onChange={s('email')}/></Field>
+          <Field label="Phone"><input className="form-input" value={f.phone} onChange={s('phone')}/></Field>
+        </Modal>
+      )}
     </>
   );
 }
 
-// ── Trip Detail ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TRIP DETAIL
+// ─────────────────────────────────────────────────────────────────────────────
 
-function TripDetail({ trip, days, docs, stays, places, personnels, onBack, onAddDay, onAddDoc, onAddStay, onAddPlace, onAddPersonnel }) {
+function TripDetail({ trip, days, docs, otherDocs, stays, places, personnels, onBack, handlers }) {
   const [tab, setTab] = useState('itinerary');
   const n = nights(trip.startDate, trip.endDate);
   const tripPersons = personnels.filter(p=>p.tripId===trip.id);
@@ -595,59 +746,33 @@ function TripDetail({ trip, days, docs, stays, places, personnels, onBack, onAdd
       </div>
       <div className="content-area">
         <div className="summary-row">
-          {[
-            ['Days planned', days.filter(d=>d.tripId===trip.id).length, `of ${n} nights`],
-            ['Tickets', docs.filter(d=>d.tripId===trip.id).length, 'flights, trains & passes'],
-            ['Stays', stays.filter(s=>s.tripId===trip.id).length, 'accommodation bookings'],
-            ['People', tripPersons.length, 'travelling'],
-          ].map(([label,val,sub])=>(
-            <div key={label} className="summary-card">
-              <div className="summary-label">{label}</div>
-              <div className="summary-value">{val}</div>
-              <div className="summary-sub">{sub}</div>
-            </div>
+          {[['Days',days.filter(d=>d.tripId===trip.id).length,`of ${n} nights`],['Tickets',docs.filter(d=>d.tripId===trip.id).length,'travel docs'],['Stays',stays.filter(s=>s.tripId===trip.id).length,'bookings'],['People',tripPersons.length,'travelling']].map(([label,val,sub])=>(
+            <div key={label} className="summary-card"><div className="summary-label">{label}</div><div className="summary-value">{val}</div><div className="summary-sub">{sub}</div></div>
           ))}
         </div>
         <div className="tab-bar">
-          {[['itinerary','📅 Itinerary'],['tickets','🎫 Tickets & docs'],['stays','🏨 Stays'],['people','👥 People']].map(([key,label])=>(
+          {[['itinerary','📅 Itinerary'],['docs','🎫 Tickets & docs'],['stays','🏨 Stays'],['people','👥 People']].map(([key,label])=>(
             <button key={key} className={`tab ${tab===key?'active':''}`} onClick={()=>setTab(key)}>{label}</button>
           ))}
         </div>
-        {tab==='itinerary' && <DaysView tripId={trip.id} days={days} places={places} onAddDay={onAddDay} onAddPlace={onAddPlace}/>}
-        {tab==='tickets'   && <DocsView tripId={trip.id} docs={docs} persons={tripPersons} onAddDoc={onAddDoc}/>}
-        {tab==='stays'     && <StaysView tripId={trip.id} stays={stays} persons={tripPersons} onAddStay={onAddStay}/>}
-        {tab==='people'    && <PersonnelsView tripId={trip.id} personnels={personnels} onAddPersonnel={onAddPersonnel}/>}
+        {tab==='itinerary' && <DaysView tripId={trip.id} days={days} places={places} onAddDay={handlers.addDay} onUpdateDay={handlers.updateDay} onDeleteDay={handlers.deleteDay} onAddPlace={handlers.addPlace} onUpdatePlace={handlers.updatePlace} onDeletePlace={handlers.deletePlace}/>}
+        {tab==='docs'      && <DocsView tripId={trip.id} docs={docs} otherDocs={otherDocs} persons={tripPersons} onAddDoc={handlers.addDoc} onUpdateDoc={handlers.updateDoc} onDeleteDoc={handlers.deleteDoc} onAddOtherDoc={handlers.addOtherDoc} onUpdateOtherDoc={handlers.updateOtherDoc} onDeleteOtherDoc={handlers.deleteOtherDoc}/>}
+        {tab==='stays'     && <StaysView tripId={trip.id} stays={stays} persons={tripPersons} onAddStay={handlers.addStay} onUpdateStay={handlers.updateStay} onDeleteStay={handlers.deleteStay}/>}
+        {tab==='people'    && <PersonnelsView tripId={trip.id} personnels={personnels} onAddPersonnel={handlers.addPersonnel} onUpdatePersonnel={handlers.updatePersonnel} onDeletePersonnel={handlers.deletePersonnel}/>}
       </div>
     </>
   );
 }
 
-// ── Trips List ─────────────────────────────────────────────────────────────
-
-function AddTripModal({ onClose, onAdd }) {
-  const [f, setF] = useState({ name:'', emoji:'✈️', status:'planning', destinations:'', startDate:'', endDate:'', budget:'', notes:'' });
-  const s = k => e => setF(p => ({...p,[k]:e.target.value}));
-  return (
-    <Modal title="New trip" onClose={onClose} onSave={()=>{onAdd({...f,id:Date.now().toString()});onClose();}}>
-      <div className="form-row">
-        <Field label="Flag / emoji"><input className="form-input" value={f.emoji} onChange={s('emoji')} placeholder="🇯🇵"/></Field>
-        <Field label="Status"><select className="form-select" value={f.status} onChange={s('status')}>{['dream','planning','upcoming','done'].map(v=><option key={v} value={v}>{v.charAt(0).toUpperCase()+v.slice(1)}</option>)}</select></Field>
-      </div>
-      <Field label="Trip name"><input className="form-input" value={f.name} onChange={s('name')} placeholder="Japan — Tokyo & Kyoto"/></Field>
-      <Field label="Destinations"><input className="form-input" value={f.destinations} onChange={s('destinations')} placeholder="Tokyo, Kyoto"/></Field>
-      <div className="form-row">
-        <Field label="Start date"><input className="form-input" type="date" value={f.startDate} onChange={s('startDate')}/></Field>
-        <Field label="End date"><input className="form-input" type="date" value={f.endDate} onChange={s('endDate')}/></Field>
-      </div>
-      <Field label="Budget"><input className="form-input" value={f.budget} onChange={s('budget')} placeholder="£2,500"/></Field>
-      <Field label="Notes"><textarea className="form-textarea" value={f.notes} onChange={s('notes')} placeholder="Visa info, reminders..."/></Field>
-    </Modal>
-  );
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// TRIPS LIST
+// ─────────────────────────────────────────────────────────────────────────────
 
 function TripsView({ trips, days, docs, stays, onSelect, onAdd }) {
   const [filter, setFilter] = useState('all');
   const [showAdd, setShowAdd] = useState(false);
+  const [f, setF] = useState({ name:'', emoji:'✈️', status:'planning', destinations:'', startDate:'', endDate:'', budget:'', notes:'' });
+  const s = k => e => setF(p=>({...p,[k]:e.target.value}));
   const filtered = trips.filter(t=>filter==='all'||t.status===filter);
   return (
     <>
@@ -682,43 +807,90 @@ function TripsView({ trips, days, docs, stays, onSelect, onAdd }) {
           </div>
         }
       </div>
-      {showAdd&&<AddTripModal onClose={()=>setShowAdd(false)} onAdd={t=>{onAdd(t);setShowAdd(false);}}/>}
+      {showAdd && (
+        <Modal title="New trip" onClose={()=>setShowAdd(false)} onSave={()=>{onAdd({...f,id:Date.now().toString()});setShowAdd(false);}}>
+          <div className="form-row"><Field label="Flag / emoji"><input className="form-input" value={f.emoji} onChange={s('emoji')} placeholder="🇯🇵"/></Field><Field label="Status"><select className="form-select" value={f.status} onChange={s('status')}>{['dream','planning','upcoming','done'].map(v=><option key={v} value={v}>{v.charAt(0).toUpperCase()+v.slice(1)}</option>)}</select></Field></div>
+          <Field label="Trip name"><input className="form-input" value={f.name} onChange={s('name')} placeholder="Japan — Tokyo & Kyoto"/></Field>
+          <Field label="Destinations"><input className="form-input" value={f.destinations} onChange={s('destinations')} placeholder="Tokyo, Kyoto"/></Field>
+          <div className="form-row"><Field label="Start date"><input className="form-input" type="date" value={f.startDate} onChange={s('startDate')}/></Field><Field label="End date"><input className="form-input" type="date" value={f.endDate} onChange={s('endDate')}/></Field></div>
+          <Field label="Budget"><input className="form-input" value={f.budget} onChange={s('budget')} placeholder="£2,500"/></Field>
+          <Field label="Notes"><textarea className="form-textarea" value={f.notes} onChange={s('notes')}/></Field>
+        </Modal>
+      )}
     </>
   );
 }
 
-// ── Settings ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SETTINGS — including Apps Script setup
+// ─────────────────────────────────────────────────────────────────────────────
 
-function SettingsView({ sheetsId, onSave }) {
+const APPS_SCRIPT_CODE = `function doPost(e) {
+  const data = JSON.parse(e.postData.contents);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(data.sheet);
+  if (!sheet) return ContentService.createTextOutput('Sheet not found');
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const row = headers.map(h => data.row[h] !== undefined ? data.row[h] : '');
+  // Update existing row if id matches, else append
+  const ids = sheet.getRange(2, 1, Math.max(sheet.getLastRow()-1,1), 1).getValues().flat();
+  const idx = ids.indexOf(String(data.row.id));
+  if (idx >= 0) {
+    sheet.getRange(idx+2, 1, 1, headers.length).setValues([row]);
+  } else {
+    sheet.appendRow(row);
+  }
+  return ContentService.createTextOutput('OK').setMimeType(ContentService.MimeType.TEXT);
+}`;
+
+function SettingsView({ sheetsId, scriptUrl, onSave }) {
   const [id, setId] = useState(sheetsId||'');
+  const [url, setUrl] = useState(scriptUrl||'');
+  const [copied, setCopied] = useState(false);
+  function copy() { navigator.clipboard.writeText(APPS_SCRIPT_CODE); setCopied(true); setTimeout(()=>setCopied(false),2000); }
   return (
     <>
-      <div className="topbar"><div className="topbar-left"><h1>Settings</h1><p>Connect Google Sheets for cross-device sync</p></div></div>
+      <div className="topbar"><div className="topbar-left"><h1>Settings</h1><p>Connect Google Sheets for sync and write-back</p></div></div>
       <div className="content-area">
         <div className="setup-wrap">
           <div className="setup-card">
-            <h2>Connect Google Sheets</h2>
-            <p>Your data lives in a Google Sheet you own. Create 6 tabs and publish each as CSV.</p>
+            <h2>1 — Connect Google Sheets (read)</h2>
+            <p>Your data is read from a published Google Sheet. Create 6 tabs and publish each as CSV.</p>
+            <div style={{ background:'var(--paper-warm)', borderRadius:'var(--radius)', padding:'14px 16px', fontSize:12, color:'var(--ink-mid)', lineHeight:2, marginBottom:14 }}>
+              <strong style={{ display:'block', marginBottom:4 }}>Sheet tabs & headers:</strong>
+              <div><strong>Trips:</strong> id, name, emoji, status, destinations, startDate, endDate, budget, notes</div>
+              <div><strong>Days:</strong> id, tripId, dayNumber, date, title, location, morning, afternoon, evening, transport, notes</div>
+              <div><strong>Documents:</strong> id, tripId, name, type, date, time, ref, fromTo, operator, details, cost, status, belongsTo</div>
+              <div><strong>Stays:</strong> id, tripId, name, type, checkIn, checkOut, address, mapsUrl, lat, lng, ref, cost, paid, checkInNotes, extras, belongsTo</div>
+              <div><strong>Places:</strong> id, tripId, dayId, name, time, category, mapsUrl, lat, lng, notes</div>
+              <div><strong>Personnels:</strong> id, tripId, name, role, email, phone</div>
+              <div><strong>OtherDocs:</strong> id, tripId, name, category, ref, issuedBy, expiryDate, belongsTo, notes, link</div>
+            </div>
+            <div className="form-group" style={{ marginBottom:20 }}>
+              <label className="form-label">Spreadsheet ID (from URL)</label>
+              <div className="url-input-row">
+                <input className="form-input" value={id} onChange={e=>setId(e.target.value)} placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"/>
+                <button className="btn btn-teal" onClick={()=>onSave(id,url)}>Save</button>
+              </div>
+            </div>
+
+            <h2 style={{ fontFamily:'var(--font-display)', fontSize:18, marginBottom:8, marginTop:4 }}>2 — Enable write-back (optional)</h2>
+            <p>To save changes made in the app back to your Google Sheet, paste the script below into your Sheet's Apps Script editor.</p>
             <div className="step-list">
-              {[['1','Create a spreadsheet at sheets.google.com named Wander'],['2','Create 6 tabs: Trips, Days, Documents, Stays, Places, Personnels'],['3','Add the exact column headers listed below to each tab'],['4','File → Share → Publish to web → each tab → CSV → Publish'],['5','Copy the spreadsheet ID from the URL and paste below']].map(([n,t])=>(
+              {[['1','Open your Google Sheet → Extensions → Apps Script'],['2','Delete any existing code, paste the script below'],['3','Click Deploy → New deployment → Web app'],['4','Set "Who has access" to Anyone → Deploy → Copy the URL'],['5','Paste the URL below and save']].map(([n,t])=>(
                 <div key={n} className="step-item"><div className="step-num">{n}</div><div className="step-text">{t}</div></div>
               ))}
             </div>
-            <div className="form-group" style={{ marginBottom:14 }}>
-              <label className="form-label">Spreadsheet ID</label>
-              <div className="url-input-row">
-                <input className="form-input" value={id} onChange={e=>setId(e.target.value)} placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"/>
-                <button className="btn btn-teal" onClick={()=>onSave(id)}>Connect</button>
-              </div>
+            <div style={{ position:'relative', marginBottom:16 }}>
+              <pre style={{ background:'var(--paper-warm)', borderRadius:'var(--radius)', padding:'14px', fontSize:11, fontFamily:'var(--font-mono)', overflowX:'auto', lineHeight:1.6, color:'var(--ink-mid)', maxHeight:200, whiteSpace:'pre-wrap' }}>{APPS_SCRIPT_CODE}</pre>
+              <button className="btn btn-sm" style={{ position:'absolute', top:8, right:8 }} onClick={copy}>{copied?'✓ Copied':'Copy'}</button>
             </div>
-            <div style={{ background:'var(--paper-warm)', borderRadius:'var(--radius)', padding:'14px 16px', fontSize:12, color:'var(--ink-mid)', lineHeight:2 }}>
-              <strong style={{ display:'block', marginBottom:6 }}>Column headers per sheet:</strong>
-              <div><strong>Trips:</strong> id, name, emoji, status, destinations, startDate, endDate, budget, notes</div>
-              <div><strong>Days:</strong> id, tripId, dayNumber, date, title, location, morning, afternoon, evening, transport, notes</div>
-              <div><strong>Documents:</strong> id, tripId, name, type, date, time, ref, fromTo, operator, details, cost, status, <span style={{color:'var(--teal)',fontWeight:600}}>belongsTo</span></div>
-              <div><strong>Stays:</strong> id, tripId, name, type, checkIn, checkOut, address, mapsUrl, <span style={{color:'var(--teal)',fontWeight:600}}>lat, lng</span>, ref, cost, paid, checkInNotes, extras, <span style={{color:'var(--teal)',fontWeight:600}}>belongsTo</span></div>
-              <div><strong>Places:</strong> id, tripId, dayId, name, time, category, mapsUrl, lat, lng, notes</div>
-              <div style={{ padding:'6px 10px', background:'var(--teal-light)', borderRadius:6, color:'var(--teal)', marginTop:4 }}><strong>Personnels (new!):</strong> id, tripId, name, role, email, phone</div>
+            <div className="form-group">
+              <label className="form-label">Apps Script web app URL</label>
+              <div className="url-input-row">
+                <input className="form-input" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec"/>
+                <button className="btn btn-teal" onClick={()=>onSave(id,url)}>Save</button>
+              </div>
             </div>
           </div>
         </div>
@@ -727,9 +899,11 @@ function SettingsView({ sheetsId, onSave }) {
   );
 }
 
-// ── Root ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ROOT APP
+// ─────────────────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'wander_v3';
+const STORAGE_KEY = 'wander_v4';
 function loadLocal() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; } }
 function saveLocal(d) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {} }
 
@@ -738,33 +912,56 @@ export default function App() {
   const [trips,      setTrips]      = useState(saved?.trips      || DEMO_TRIPS);
   const [days,       setDays]       = useState(saved?.days       || DEMO_DAYS);
   const [docs,       setDocs]       = useState(saved?.docs       || DEMO_DOCS);
+  const [otherDocs,  setOtherDocs]  = useState(saved?.otherDocs  || DEMO_OTHER_DOCS);
   const [stays,      setStays]      = useState(saved?.stays      || DEMO_STAYS);
   const [places,     setPlaces]     = useState(saved?.places     || DEMO_PLACES);
   const [personnels, setPersonnels] = useState(saved?.personnels || DEMO_PERSONNELS);
   const [sheetsId,   setSheetsId]   = useState(saved?.sheetsId   || '');
-  const [view, setView] = useState('trips');
+  const [scriptUrl,  setScriptUrl]  = useState(saved?.scriptUrl  || '');
+  const [view, setView]             = useState('trips');
   const [selectedTrip, setSelectedTrip] = useState(null);
 
   function persist(u) {
-    const next = { trips, days, docs, stays, places, personnels, sheetsId, ...u };
+    const next = { trips, days, docs, otherDocs, stays, places, personnels, sheetsId, scriptUrl, ...u };
     saveLocal(next);
     if (u.trips)      setTrips(u.trips);
     if (u.days)       setDays(u.days);
     if (u.docs)       setDocs(u.docs);
+    if (u.otherDocs)  setOtherDocs(u.otherDocs);
     if (u.stays)      setStays(u.stays);
     if (u.places)     setPlaces(u.places);
     if (u.personnels) setPersonnels(u.personnels);
-    if (u.sheetsId !== undefined) setSheetsId(u.sheetsId);
+    if (u.sheetsId !== undefined)  setSheetsId(u.sheetsId);
+    if (u.scriptUrl !== undefined) setScriptUrl(u.scriptUrl);
   }
 
-  const addTrip      = t => persist({ trips:      [...trips, t] });
-  const addDay       = d => persist({ days:       [...days, d] });
-  const addDoc       = d => persist({ docs:       [...docs, d] });
-  const addStay      = s => persist({ stays:      [...stays, s] });
-  const addPlace     = p => persist({ places:     [...places, p] });
-  const addPersonnel = p => persist({ personnels: [...personnels, p] });
-  const navTo        = v => { setView(v); setSelectedTrip(null); };
+  // Generic CRUD factory
+  function crud(key, getter) {
+    return {
+      add:    item   => persist({ [key]: [...getter(), item] }),
+      update: item   => persist({ [key]: getter().map(x => x.id===item.id ? item : x) }),
+      delete: id     => persist({ [key]: getter().filter(x => x.id!==id) }),
+    };
+  }
 
+  const tripCrud      = crud('trips',      ()=>trips);
+  const dayCrud       = crud('days',       ()=>days);
+  const docCrud       = crud('docs',       ()=>docs);
+  const otherDocCrud  = crud('otherDocs',  ()=>otherDocs);
+  const stayCrud      = crud('stays',      ()=>stays);
+  const placeCrud     = crud('places',     ()=>places);
+  const personnelCrud = crud('personnels', ()=>personnels);
+
+  const handlers = {
+    addDay:            dayCrud.add,       updateDay:        dayCrud.update,       deleteDay:        dayCrud.delete,
+    addDoc:            docCrud.add,       updateDoc:        docCrud.update,       deleteDoc:        docCrud.delete,
+    addOtherDoc:       otherDocCrud.add,  updateOtherDoc:   otherDocCrud.update,  deleteOtherDoc:   otherDocCrud.delete,
+    addStay:           stayCrud.add,      updateStay:       stayCrud.update,      deleteStay:       stayCrud.delete,
+    addPlace:          placeCrud.add,     updatePlace:      placeCrud.update,     deletePlace:      placeCrud.delete,
+    addPersonnel:      personnelCrud.add, updatePersonnel:  personnelCrud.update, deletePersonnel:  personnelCrud.delete,
+  };
+
+  const navTo = v => { setView(v); setSelectedTrip(null); };
   const activeTrips = trips.filter(t=>t.status==='upcoming'||t.status==='planning');
 
   return (
@@ -776,7 +973,7 @@ export default function App() {
         </div>
         <div className="nav-section-label">Navigate</div>
         <button className={`nav-item ${view==='trips'&&!selectedTrip?'active':''}`} onClick={()=>navTo('trips')}><Map size={15}/>All trips</button>
-        <button className={`nav-item ${view==='settings'?'active':''}`} onClick={()=>navTo('settings')}><Settings size={15}/>Google Sheets</button>
+        <button className={`nav-item ${view==='settings'?'active':''}`} onClick={()=>navTo('settings')}><Settings size={15}/>Settings & Sheets</button>
         {activeTrips.length>0 && <>
           <div className="nav-section-label">Active trips</div>
           {activeTrips.slice(0,5).map(t=>(
@@ -786,17 +983,16 @@ export default function App() {
             </button>
           ))}
         </>}
-        <div className="sidebar-footer">Data saved locally<br/>+ Google Sheets sync</div>
+        <div className="sidebar-footer">Data saved locally<br/>{scriptUrl?'✓ Sheet write-back on':'Sheet write-back off'}</div>
       </aside>
       <main className="main">
         {selectedTrip
-          ? <TripDetail trip={selectedTrip} days={days} docs={docs} stays={stays} places={places} personnels={personnels}
-              onBack={()=>{setSelectedTrip(null);setView('trips');}}
-              onAddDay={addDay} onAddDoc={addDoc} onAddStay={addStay} onAddPlace={addPlace} onAddPersonnel={addPersonnel}/>
+          ? <TripDetail trip={selectedTrip} days={days} docs={docs} otherDocs={otherDocs} stays={stays} places={places} personnels={personnels}
+              onBack={()=>{setSelectedTrip(null);setView('trips');}} handlers={handlers}/>
           : view==='trips'
-            ? <TripsView trips={trips} days={days} docs={docs} stays={stays} onSelect={t=>{setSelectedTrip(t);setView('trip');}} onAdd={addTrip}/>
+            ? <TripsView trips={trips} days={days} docs={docs} stays={stays} onSelect={t=>{setSelectedTrip(t);setView('trip');}} onAdd={tripCrud.add}/>
             : view==='settings'
-              ? <SettingsView sheetsId={sheetsId} onSave={id=>persist({sheetsId:id})}/>
+              ? <SettingsView sheetsId={sheetsId} scriptUrl={scriptUrl} onSave={(id,url)=>persist({sheetsId:id,scriptUrl:url})}/>
               : null
         }
       </main>
