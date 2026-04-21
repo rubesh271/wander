@@ -61,49 +61,37 @@ export const SHEET_HEADERS = {
   OtherDocs:  ['id','tripId','name','category','ref','issuedBy','expiryDate','belongsTo','notes','link','fileLabel'],
 };
 
+// Send data to Apps Script via GET request with URL-encoded payload.
+// This bypasses CORS — Apps Script handles GET requests without requiring
+// special headers, unlike POST which gets blocked by browsers.
+async function callScript(scriptUrl, params) {
+  if (!scriptUrl) return false;
+  try {
+    // Encode the entire payload as a single 'data' param to keep URLs clean
+    const url = scriptUrl + '?data=' + encodeURIComponent(JSON.stringify(params));
+    await fetch(url, { method: 'GET', mode: 'no-cors' });
+    return true;
+  } catch { return false; }
+}
+
 // Push a row to the Apps Script web app (add or update)
 export async function pushToSheet(scriptUrl, sheetName, row, action='upsert') {
   if (!scriptUrl) return false;
-  // Strip fileData (base64) from sheet rows — too large, just store link/label
   const safeRow = { ...row };
-  delete safeRow.fileData;
-  try {
-    await fetch(scriptUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sheet: sheetName, row: safeRow, action }),
-    });
-    return true;
-  } catch { return false; }
+  delete safeRow.fileData; // base64 is too large for URL params — only store label/link
+  return callScript(scriptUrl, { action, sheet: sheetName, row: safeRow });
 }
 
 // Delete a row from the sheet by id
 export async function deleteFromSheet(scriptUrl, sheetName, id) {
   if (!scriptUrl) return false;
-  try {
-    await fetch(scriptUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sheet: sheetName, action: 'delete', id }),
-    });
-    return true;
-  } catch { return false; }
+  return callScript(scriptUrl, { action: 'delete', sheet: sheetName, id });
 }
 
 // Setup sheet headers via Apps Script
 export async function setupSheet(scriptUrl) {
   if (!scriptUrl) return false;
-  try {
-    await fetch(scriptUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'setup', headers: SHEET_HEADERS }),
-    });
-    return true;
-  } catch { return false; }
+  return callScript(scriptUrl, { action: 'setup', headers: SHEET_HEADERS });
 }
 
 export function fileToBase64(file) {
@@ -116,8 +104,9 @@ export function fileToBase64(file) {
 }
 
 // The complete Apps Script to paste into Extensions > Apps Script
-export const APPS_SCRIPT_CODE = `// Wander — Google Sheets Apps Script
-// Paste this into Extensions > Apps Script, then Deploy as Web App
+export const APPS_SCRIPT_CODE = `// Wander — Google Sheets Apps Script v2
+// Paste into Extensions > Apps Script, then Deploy as Web App
+// Execute as: Me | Who has access: Anyone
 
 const SHEET_HEADERS = {
   Trips:      ['id','name','emoji','status','destinations','startDate','endDate','budget','notes'],
@@ -129,66 +118,77 @@ const SHEET_HEADERS = {
   OtherDocs:  ['id','tripId','name','category','ref','issuedBy','expiryDate','belongsTo','notes','link','fileLabel'],
 };
 
-function doPost(e) {
+function doGet(e) {
   try {
-    const data = JSON.parse(e.postData.contents);
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-    // Setup: create all tabs with headers
-    if (data.action === 'setup') {
-      Object.entries(data.headers).forEach(([name, headers]) => {
-        let sheet = ss.getSheetByName(name);
-        if (!sheet) sheet = ss.insertSheet(name);
-        if (sheet.getLastRow() === 0) {
-          sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-          sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
-          sheet.setFrozenRows(1);
-        }
-      });
-      return ok('Setup complete');
-    }
-
-    const sheet = ss.getSheetByName(data.sheet);
-    if (!sheet) return ok('Sheet not found: ' + data.sheet);
-
-    // Delete a row by id
-    if (data.action === 'delete') {
-      const idCol = 1;
-      const lastRow = sheet.getLastRow();
-      if (lastRow < 2) return ok('Nothing to delete');
-      const ids = sheet.getRange(2, idCol, lastRow - 1, 1).getValues().flat().map(String);
-      const idx = ids.indexOf(String(data.id));
-      if (idx >= 0) sheet.deleteRow(idx + 2);
-      return ok('Deleted');
-    }
-
-    // Upsert: add or update
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    const row = headers.map(h => data.row[h] !== undefined ? String(data.row[h]) : '');
-    const lastRow = sheet.getLastRow();
-    if (lastRow >= 2) {
-      const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues().flat().map(String);
-      const idx = ids.indexOf(String(data.row.id));
-      if (idx >= 0) {
-        sheet.getRange(idx + 2, 1, 1, headers.length).setValues([row]);
-        return ok('Updated row ' + (idx + 2));
-      }
-    }
-    sheet.appendRow(row);
-    return ok('Appended');
-
+    // Parse the data param sent by the Wander app
+    var raw = e.parameter.data;
+    if (!raw) return respond('Wander script is live.');
+    var data = JSON.parse(decodeURIComponent(raw));
+    return handleRequest(data);
   } catch(err) {
-    return ContentService.createTextOutput('Error: ' + err.message)
-      .setMimeType(ContentService.MimeType.TEXT);
+    return respond('Error: ' + err.message);
   }
 }
 
-function doGet(e) {
-  return ContentService.createTextOutput('Wander script is live.')
-    .setMimeType(ContentService.MimeType.TEXT);
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    return handleRequest(data);
+  } catch(err) {
+    return respond('Error: ' + err.message);
+  }
 }
 
-function ok(msg) {
-  return ContentService.createTextOutput(msg)
-    .setMimeType(ContentService.MimeType.TEXT);
+function handleRequest(data) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Setup: create all tabs with headers
+  if (data.action === 'setup') {
+    var headers = data.headers || SHEET_HEADERS;
+    Object.keys(headers).forEach(function(name) {
+      var cols = headers[name];
+      var sheet = ss.getSheetByName(name);
+      if (!sheet) sheet = ss.insertSheet(name);
+      if (sheet.getLastRow() === 0) {
+        sheet.getRange(1, 1, 1, cols.length).setValues([cols]);
+        sheet.getRange(1, 1, 1, cols.length).setFontWeight('bold');
+        sheet.setFrozenRows(1);
+      }
+    });
+    return respond('Setup complete');
+  }
+
+  var sheet = ss.getSheetByName(data.sheet);
+  if (!sheet) return respond('Sheet not found: ' + data.sheet);
+
+  // Delete a row by id
+  if (data.action === 'delete') {
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return respond('Nothing to delete');
+    var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues().map(function(r){ return String(r[0]); });
+    var idx = ids.indexOf(String(data.id));
+    if (idx >= 0) sheet.deleteRow(idx + 2);
+    return respond('Deleted');
+  }
+
+  // Upsert: update existing row or append new one
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var row = headers.map(function(h) {
+    return data.row[h] !== undefined ? String(data.row[h]) : '';
+  });
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    var existingIds = sheet.getRange(2, 1, lastRow - 1, 1).getValues().map(function(r){ return String(r[0]); });
+    var rowIdx = existingIds.indexOf(String(data.row.id));
+    if (rowIdx >= 0) {
+      sheet.getRange(rowIdx + 2, 1, 1, headers.length).setValues([row]);
+      return respond('Updated');
+    }
+  }
+  sheet.appendRow(row);
+  return respond('Added');
+}
+
+function respond(msg) {
+  return ContentService.createTextOutput(msg).setMimeType(ContentService.MimeType.TEXT);
 }`;
