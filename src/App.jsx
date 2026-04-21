@@ -951,9 +951,39 @@ function SettingsView({ sheetsId, scriptUrl, onSave, onSetupSheet }) {
 // ROOT APP
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'wander_v5';
-function loadLocal() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; } }
-function saveLocal(d) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {} }
+// Stable key — never change this again or data will be lost on refresh
+const STORAGE_KEY = 'wander_data';
+
+function loadLocal() {
+  try {
+    // Try current key first
+    const current = localStorage.getItem(STORAGE_KEY);
+    if (current) return JSON.parse(current);
+    // Migrate from any previous version keys
+    for (const old of ['wander_v5','wander_v4','wander_v3','wander_v2','wander_v1']) {
+      const prev = localStorage.getItem(old);
+      if (prev) {
+        const parsed = JSON.parse(prev);
+        localStorage.setItem(STORAGE_KEY, prev); // migrate to new key
+        localStorage.removeItem(old);
+        return parsed;
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+function saveLocal(d) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {}
+}
+
+// Only fall back to demo data if there is truly nothing saved at all
+function orDemo(saved, key, demo) {
+  if (!saved) return demo;
+  // If key exists in saved (even as empty array), use it
+  if (key in saved) return saved[key];
+  return demo;
+}
 
 // Map data keys to their Google Sheet tab names
 const SHEET_MAP = {
@@ -963,15 +993,17 @@ const SHEET_MAP = {
 
 export default function App() {
   const saved = loadLocal();
-  const [trips,      setTrips]      = useState(saved?.trips      || DEMO_TRIPS);
-  const [days,       setDays]       = useState(saved?.days       || DEMO_DAYS);
-  const [docs,       setDocs]       = useState(saved?.docs       || DEMO_DOCS);
-  const [otherDocs,  setOtherDocs]  = useState(saved?.otherDocs  || DEMO_OTHER_DOCS);
-  const [stays,      setStays]      = useState(saved?.stays      || DEMO_STAYS);
-  const [places,     setPlaces]     = useState(saved?.places     || DEMO_PLACES);
-  const [personnels, setPersonnels] = useState(saved?.personnels || DEMO_PERSONNELS);
-  const [sheetsId,   setSheetsId]   = useState(saved?.sheetsId   || '');
-  const [scriptUrl,  setScriptUrl]  = useState(saved?.scriptUrl  || '');
+  const isFirstLoad = !saved; // true only on very first visit ever
+
+  const [trips,      setTrips]      = useState(orDemo(saved, 'trips',      isFirstLoad ? DEMO_TRIPS      : []));
+  const [days,       setDays]       = useState(orDemo(saved, 'days',       isFirstLoad ? DEMO_DAYS       : []));
+  const [docs,       setDocs]       = useState(orDemo(saved, 'docs',       isFirstLoad ? DEMO_DOCS       : []));
+  const [otherDocs,  setOtherDocs]  = useState(orDemo(saved, 'otherDocs',  isFirstLoad ? DEMO_OTHER_DOCS : []));
+  const [stays,      setStays]      = useState(orDemo(saved, 'stays',      isFirstLoad ? DEMO_STAYS      : []));
+  const [places,     setPlaces]     = useState(orDemo(saved, 'places',     isFirstLoad ? DEMO_PLACES     : []));
+  const [personnels, setPersonnels] = useState(orDemo(saved, 'personnels', isFirstLoad ? DEMO_PERSONNELS : []));
+  const [sheetsId,   setSheetsId]   = useState(saved?.sheetsId  || '');
+  const [scriptUrl,  setScriptUrl]  = useState(saved?.scriptUrl || '');
   const [syncStatus, setSyncStatus] = useState('idle'); // idle | syncing | ok | error
   const [view, setView]             = useState('trips');
   const [selectedTrip, setSelectedTrip] = useState(null);
@@ -1009,15 +1041,22 @@ export default function App() {
   function persist(u) {
     const next = { trips, days, docs, otherDocs, stays, places, personnels, sheetsId, scriptUrl, ...u };
     saveLocal(next);
-    if (u.trips)      setTrips(u.trips);
-    if (u.days)       setDays(u.days);
-    if (u.docs)       setDocs(u.docs);
-    if (u.otherDocs)  setOtherDocs(u.otherDocs);
-    if (u.stays)      setStays(u.stays);
-    if (u.places)     setPlaces(u.places);
-    if (u.personnels) setPersonnels(u.personnels);
-    if (u.sheetsId !== undefined)  { setSheetsId(u.sheetsId); scriptUrlRef.current = scriptUrl; }
-    if (u.scriptUrl !== undefined) { setScriptUrl(u.scriptUrl); scriptUrlRef.current = u.scriptUrl; }
+    // Use explicit undefined check so empty arrays [] are preserved
+    if ('trips'      in u) setTrips(u.trips);
+    if ('days'       in u) setDays(u.days);
+    if ('docs'       in u) setDocs(u.docs);
+    if ('otherDocs'  in u) setOtherDocs(u.otherDocs);
+    if ('stays'      in u) setStays(u.stays);
+    if ('places'     in u) setPlaces(u.places);
+    if ('personnels' in u) setPersonnels(u.personnels);
+    if ('sheetsId'   in u) { setSheetsId(u.sheetsId); scriptUrlRef.current = u.sheetsId; }
+    if ('scriptUrl'  in u) { setScriptUrl(u.scriptUrl); scriptUrlRef.current = u.scriptUrl; }
+  }
+
+  function clearDemoData() {
+    if (window.confirm('This will delete all demo data and start fresh. Your real trips will not be affected once you start adding them. Continue?')) {
+      persist({ trips:[], days:[], docs:[], otherDocs:[], stays:[], places:[], personnels:[] });
+    }
   }
 
   // CRUD factory with automatic sheet write-back
@@ -1058,7 +1097,13 @@ export default function App() {
   const navTo = v => { setView(v); setSelectedTrip(null); };
   const activeTrips = trips.filter(t=>t.status==='upcoming'||t.status==='planning');
 
-  const syncLabel = syncStatus==='syncing' ? '⏳ Syncing…' : syncStatus==='ok' ? '✓ Saved to Sheet' : syncStatus==='error' ? '⚠ Sync error' : scriptUrl ? '✓ Sheet connected' : 'No sheet connected';
+  const syncLabel = syncStatus==='syncing' ? '⏳ Syncing to Sheet…'
+    : syncStatus==='ok'    ? '✓ Saved to Sheet'
+    : syncStatus==='error' ? '⚠️ Sheet sync failed'
+    : scriptUrl            ? '✓ Sheet connected'
+    : '💾 Saved locally';
+
+  const isDemo = trips.length > 0 && trips[0]?.id === '1' && trips[0]?.name?.includes('Japan');
 
   return (
     <div className="app">
@@ -1079,8 +1124,15 @@ export default function App() {
             </button>
           ))}
         </>}
-        <div className="sidebar-footer" style={{ color: syncStatus==='error'?'var(--rose)':syncStatus==='ok'?'var(--teal-mid)':undefined }}>
-          {syncLabel}
+        <div className="sidebar-footer">
+          <div style={{ color: syncStatus==='error'?'rgba(192,82,74,0.8)':syncStatus==='ok'?'rgba(45,168,130,0.9)':'rgba(255,255,255,0.3)', marginBottom:6, fontSize:11 }}>
+            {syncLabel}
+          </div>
+          {isDemo && (
+            <button onClick={clearDemoData} style={{ fontSize:10, color:'rgba(255,255,255,0.25)', background:'none', border:'1px solid rgba(255,255,255,0.1)', borderRadius:4, padding:'3px 7px', cursor:'pointer', fontFamily:'var(--font-body)', width:'100%' }}>
+              Clear demo data
+            </button>
+          )}
         </div>
       </aside>
       <main className="main">
