@@ -1,3 +1,21 @@
+export const DEMO_PLACES = [
+  { id: 'p1', tripId: '1', dayId: 'd1', name: 'Narita Airport', time: '07:00', category: 'Transport', mapsUrl: 'https://maps.google.com/?q=Narita+Airport+Japan', lat: '35.7719', lng: '140.3929', notes: 'Arrive Terminal 1. Buy IC card here.' },
+  { id: 'p2', tripId: '1', dayId: 'd1', name: 'Shinjuku Station', time: '09:30', category: 'Transport', mapsUrl: 'https://maps.google.com/?q=Shinjuku+Station+Tokyo', lat: '35.6896', lng: '139.7006', notes: 'Take Narita Express (N\'EX)' },
+  { id: 'p3', tripId: '1', dayId: 'd1', name: 'Ace Hotel Tokyo', time: '15:00', category: 'Stay', mapsUrl: 'https://maps.google.com/?q=Ace+Hotel+Tokyo', lat: '35.6648', lng: '139.7127', notes: 'Check-in from 15:00' },
+  { id: 'p4', tripId: '1', dayId: 'd1', name: 'Omoide Yokocho', time: '19:30', category: 'Food', mapsUrl: 'https://maps.google.com/?q=Omoide+Yokocho+Shinjuku', lat: '35.6930', lng: '139.6993', notes: 'Memory Lane — tiny ramen and yakitori stalls' },
+  { id: 'p5', tripId: '1', dayId: 'd2', name: 'Meiji Shrine', time: '09:00', category: 'Sights', mapsUrl: 'https://maps.google.com/?q=Meiji+Shrine+Tokyo', lat: '35.6764', lng: '139.6993', notes: 'Arrive early to beat crowds' },
+  { id: 'p6', tripId: '1', dayId: 'd2', name: 'Takeshita Street', time: '10:30', category: 'Shopping', mapsUrl: 'https://maps.google.com/?q=Takeshita+Street+Harajuku', lat: '35.6702', lng: '139.7026', notes: 'Harajuku fashion street' },
+  { id: 'p7', tripId: '1', dayId: 'd2', name: 'Afuri Ramen', time: '13:00', category: 'Food', mapsUrl: 'https://maps.google.com/?q=Afuri+Ramen+Harajuku', lat: '35.6694', lng: '139.7039', notes: 'Yuzu shio ramen — get there early, queues form' },
+  { id: 'p8', tripId: '1', dayId: 'd2', name: 'Shibuya Crossing', time: '15:30', category: 'Sights', mapsUrl: 'https://maps.google.com/?q=Shibuya+Scramble+Crossing', lat: '35.6595', lng: '139.7004', notes: 'Most famous crossing in the world' },
+  { id: 'p9', tripId: '1', dayId: 'd2', name: 'Shibuya Sky', time: '20:00', category: 'Sights', mapsUrl: 'https://maps.google.com/?q=Shibuya+Sky+Observatory', lat: '35.6580', lng: '139.7016', notes: 'Book tickets in advance — rooftop observatory' },
+  { id: 'p10', tripId: '1', dayId: 'd3', name: 'Tsukiji Outer Market', time: '07:00', category: 'Food', mapsUrl: 'https://maps.google.com/?q=Tsukiji+Outer+Market', lat: '35.6654', lng: '139.7707', notes: 'Best breakfast in Tokyo — fresh sushi and tamagoyaki' },
+  { id: 'p11', tripId: '1', dayId: 'd3', name: 'TeamLab Planets', time: '14:00', category: 'Activity', mapsUrl: 'https://maps.google.com/?q=teamLab+Planets+Tokyo', lat: '35.6467', lng: '139.7845', notes: 'Pre-booked tickets essential. Wear shorts — you walk through water' },
+  { id: 'p12', tripId: '1', dayId: 'd4', name: 'Tokyo Station', time: '09:15', category: 'Transport', mapsUrl: 'https://maps.google.com/?q=Tokyo+Station', lat: '35.6812', lng: '139.7671', notes: 'Nozomi 11 departs 09:33 — arrive early to find platform' },
+  { id: 'p13', tripId: '1', dayId: 'd4', name: 'Kyoto Station', time: '12:10', category: 'Transport', mapsUrl: 'https://maps.google.com/?q=Kyoto+Station', lat: '34.9858', lng: '135.7588', notes: 'Arrive 12:10 · taxi or subway to hotel' },
+  { id: 'p14', tripId: '1', dayId: 'd4', name: 'Nishiki Market', time: '14:00', category: 'Food', mapsUrl: 'https://maps.google.com/?q=Nishiki+Market+Kyoto', lat: '35.0050', lng: '135.7653', notes: '"Kyoto\'s Kitchen" — try pickles, tofu, skewers' },
+  { id: 'p15', tripId: '1', dayId: 'd4', name: 'Gion District', time: '18:00', category: 'Sights', mapsUrl: 'https://maps.google.com/?q=Gion+District+Kyoto', lat: '35.0037', lng: '135.7752', notes: 'Evening stroll — best chance to spot a geisha on Hanamikoji St' },
+];
+
 export const DEMO_TRIPS = [
   {
     id: '1',
