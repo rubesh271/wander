@@ -1,7 +1,38 @@
 export function fmt(d) {
   if (!d) return '—';
-  try { return new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }); }
-  catch { return d; }
+  try {
+    // Handle YYYY-MM-DD from Google Sheets without timezone shift
+    const iso = String(d).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const date = iso
+      ? new Date(Number(iso[1]), Number(iso[2])-1, Number(iso[3]))
+      : new Date(d);
+    if (isNaN(date.getTime())) return String(d);
+    return date.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+  } catch { return String(d); }
+}
+
+export function fmtShort(d) {
+  if (!d) return '—';
+  try {
+    const iso = String(d).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const date = iso
+      ? new Date(Number(iso[1]), Number(iso[2])-1, Number(iso[3]))
+      : new Date(d);
+    if (isNaN(date.getTime())) return String(d);
+    return date.toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+  } catch { return String(d); }
+}
+
+export function fmtDay(d) {
+  if (!d) return '—';
+  try {
+    const iso = String(d).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const date = iso
+      ? new Date(Number(iso[1]), Number(iso[2])-1, Number(iso[3]))
+      : new Date(d);
+    if (isNaN(date.getTime())) return String(d);
+    return date.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+  } catch { return String(d); }
 }
 
 export function nights(a, b) {
@@ -55,8 +86,8 @@ export const SHEET_HEADERS = {
   Trips:      ['id','name','emoji','status','destinations','startDate','endDate','budget','notes'],
   Days:       ['id','tripId','dayNumber','date','title','location','morning','afternoon','evening','transport','notes'],
   Documents:  ['id','tripId','name','type','date','time','ref','fromTo','operator','details','cost','status','belongsTo','link','fileLabel'],
-  Stays:      ['id','tripId','name','type','checkIn','checkOut','address','mapsUrl','lat','lng','ref','cost','paid','checkInNotes','extras','belongsTo'],
-  Places:     ['id','tripId','dayId','name','time','category','mapsUrl','lat','lng','notes'],
+  Stays:      ['id','tripId','name','type','checkIn','checkOut','address','mapsUrl','ref','cost','paid','checkInNotes','extras','belongsTo'],
+  Places:     ['id','tripId','dayId','name','time','category','mapsUrl','notes'],
   Personnels: ['id','tripId','name','role','email','phone'],
   OtherDocs:  ['id','tripId','name','category','ref','issuedBy','expiryDate','belongsTo','notes','link','fileLabel'],
 };
@@ -112,8 +143,8 @@ const SHEET_HEADERS = {
   Trips:      ['id','name','emoji','status','destinations','startDate','endDate','budget','notes'],
   Days:       ['id','tripId','dayNumber','date','title','location','morning','afternoon','evening','transport','notes'],
   Documents:  ['id','tripId','name','type','date','time','ref','fromTo','operator','details','cost','status','belongsTo','link','fileLabel'],
-  Stays:      ['id','tripId','name','type','checkIn','checkOut','address','mapsUrl','lat','lng','ref','cost','paid','checkInNotes','extras','belongsTo'],
-  Places:     ['id','tripId','dayId','name','time','category','mapsUrl','lat','lng','notes'],
+  Stays:      ['id','tripId','name','type','checkIn','checkOut','address','mapsUrl','ref','cost','paid','checkInNotes','extras','belongsTo'],
+  Places:     ['id','tripId','dayId','name','time','category','mapsUrl','notes'],
   Personnels: ['id','tripId','name','role','email','phone'],
   OtherDocs:  ['id','tripId','name','category','ref','issuedBy','expiryDate','belongsTo','notes','link','fileLabel'],
 };

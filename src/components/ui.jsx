@@ -81,17 +81,30 @@ export function MapModal({ title, subtitle, items, onClose }) {
 
   function buildEmbedUrl(item) {
     if (!item) return null;
-    if (item.lat && item.lng) return `https://maps.google.com/maps?q=${item.lat},${item.lng}&z=15&output=embed`;
-    if (item.mapsUrl) return `https://maps.google.com/maps?q=${encodeURIComponent(item.name)}&output=embed`;
+    // Use the Maps URL to extract a query, or fall back to place name
+    if (item.mapsUrl) {
+      const qMatch = item.mapsUrl.match(/[?&]q=([^&]+)/);
+      const q = qMatch ? qMatch[1] : encodeURIComponent(item.name);
+      return `https://maps.google.com/maps?q=${q}&z=15&output=embed`;
+    }
+    if (item.name) return `https://maps.google.com/maps?q=${encodeURIComponent(item.name)}&z=15&output=embed`;
     return null;
   }
+
   function buildDirectionsUrl() {
-    const pts = items.filter(p => p.lat && p.lng);
+    const pts = items.filter(p => p.name || p.mapsUrl);
     if (pts.length === 0) return null;
-    if (pts.length === 1) return pts[0].mapsUrl || `https://maps.google.com/?q=${pts[0].lat},${pts[0].lng}`;
-    const origin = `${pts[0].lat},${pts[0].lng}`;
-    const dest = `${pts[pts.length-1].lat},${pts[pts.length-1].lng}`;
-    const wps = pts.slice(1,-1).map(p=>`${p.lat},${p.lng}`).join('|');
+    function pointStr(p) {
+      if (p.mapsUrl) {
+        const qMatch = p.mapsUrl.match(/[?&]q=([^&]+)/);
+        if (qMatch) return qMatch[1];
+      }
+      return encodeURIComponent(p.name);
+    }
+    if (pts.length === 1) return pts[0].mapsUrl || `https://maps.google.com/?q=${encodeURIComponent(pts[0].name)}`;
+    const origin = pointStr(pts[0]);
+    const dest   = pointStr(pts[pts.length-1]);
+    const wps    = pts.slice(1,-1).map(pointStr).join('|');
     return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${wps?`&waypoints=${wps}`:''}`;
   }
 
