@@ -1,18 +1,20 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import App from './App.jsx'
-import SharedView from './SharedView.jsx'
-import './index.css'
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import SharedView from './SharedView.jsx';
+import Setup from './Setup.jsx';
+import './index.css';
 
-// Check if this is a shared view link (?sheet=SPREADSHEET_ID)
+// Get sheet ID — from URL param (?sheet=ID) or from localStorage
 const urlParams = new URLSearchParams(window.location.search);
-const sharedSheetId = urlParams.get('sheet');
+const sheetIdFromUrl = urlParams.get('sheet');
+const sheetIdFromStorage = localStorage.getItem('wander_sheet_id');
+const sheetId = sheetIdFromUrl || sheetIdFromStorage;
+
+// If a sheet ID was in the URL, save it for next time
+if (sheetIdFromUrl) localStorage.setItem('wander_sheet_id', sheetIdFromUrl);
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    {sharedSheetId
-      ? <SharedView sheetId={sharedSheetId} />
-      : <App />
-    }
+    {sheetId ? <SharedView sheetId={sheetId}/> : <Setup/>}
   </StrictMode>
-)
+);
