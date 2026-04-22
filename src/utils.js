@@ -83,13 +83,13 @@ export const OTHER_DOC_CATEGORIES = [
 
 // Sheet headers for each tab — order must match what Apps Script expects
 export const SHEET_HEADERS = {
-  Trips:      ['id','name','emoji','status','destinations','startDate','endDate','budget','notes'],
-  Days:       ['id','tripId','dayNumber','date','title','location','morning','afternoon','evening','transport','notes'],
-  Documents:  ['id','tripId','name','type','date','time','ref','fromTo','operator','details','cost','status','belongsTo','link','fileLabel'],
-  Stays:      ['id','tripId','name','type','checkIn','checkOut','address','mapsUrl','ref','cost','paid','checkInNotes','extras','belongsTo'],
-  Places:     ['id','tripId','dayId','name','time','category','mapsUrl','notes'],
-  Personnels: ['id','tripId','name','role','email','phone'],
-  OtherDocs:  ['id','tripId','name','category','ref','issuedBy','expiryDate','belongsTo','notes','link','fileLabel'],
+  Trips:         ['id','name','emoji','status','destinations','startDate','endDate','budget','notes'],
+  Days:          ['id','tripId','dayNumber','date','title','location','morning','afternoon','evening','transport','notes'],
+  TravelTickets: ['id','tripId','name','type','date','time','ref','fromTo','operator','details','cost','status','belongsTo','link','fileLabel'],
+  Stays:         ['id','tripId','name','type','checkIn','checkOut','address','mapsUrl','lat','lng','ref','cost','paid','checkInNotes','extras','belongsTo','bookingLink'],
+  Places:        ['id','tripId','dayId','name','time','category','mapsUrl','lat','lng','notes'],
+  Personnels:    ['id','tripId','name','role','email','phone'],
+  OtherDocs:     ['id','tripId','name','category','ref','issuedBy','expiryDate','belongsTo','notes','link','fileLabel'],
 };
 
 // Send data to Apps Script via GET request with URL-encoded payload.
@@ -135,18 +135,18 @@ export function fileToBase64(file) {
 }
 
 // The complete Apps Script to paste into Extensions > Apps Script
-export const APPS_SCRIPT_CODE = `// Wander — Google Sheets Apps Script v2
+export const APPS_SCRIPT_CODE = `// Wander — Google Sheets Apps Script v3
 // Paste into Extensions > Apps Script, then Deploy as Web App
 // Execute as: Me | Who has access: Anyone
 
 const SHEET_HEADERS = {
-  Trips:      ['id','name','emoji','status','destinations','startDate','endDate','budget','notes'],
-  Days:       ['id','tripId','dayNumber','date','title','location','morning','afternoon','evening','transport','notes'],
-  Documents:  ['id','tripId','name','type','date','time','ref','fromTo','operator','details','cost','status','belongsTo','link','fileLabel'],
-  Stays:      ['id','tripId','name','type','checkIn','checkOut','address','mapsUrl','ref','cost','paid','checkInNotes','extras','belongsTo'],
-  Places:     ['id','tripId','dayId','name','time','category','mapsUrl','notes'],
-  Personnels: ['id','tripId','name','role','email','phone'],
-  OtherDocs:  ['id','tripId','name','category','ref','issuedBy','expiryDate','belongsTo','notes','link','fileLabel'],
+  Trips:         ['id','name','emoji','status','destinations','startDate','endDate','budget','notes'],
+  Days:          ['id','tripId','dayNumber','date','title','location','morning','afternoon','evening','transport','notes'],
+  TravelTickets: ['id','tripId','name','type','date','time','ref','fromTo','operator','details','cost','status','belongsTo','link','fileLabel'],
+  Stays:         ['id','tripId','name','type','checkIn','checkOut','address','mapsUrl','lat','lng','ref','cost','paid','checkInNotes','extras','belongsTo','bookingLink'],
+  Places:        ['id','tripId','dayId','name','time','category','mapsUrl','lat','lng','notes'],
+  Personnels:    ['id','tripId','name','role','email','phone'],
+  OtherDocs:     ['id','tripId','name','category','ref','issuedBy','expiryDate','belongsTo','notes','link','fileLabel'],
 };
 
 function doGet(e) {

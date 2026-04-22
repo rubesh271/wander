@@ -35,7 +35,7 @@ async function fetchTab(sheetId, tab) {
 async function loadAll(sheetId) {
   const [trips,days,docs,otherDocs,stays,places,personnels]=await Promise.all([
     fetchTab(sheetId,'Trips'), fetchTab(sheetId,'Days'),
-    fetchTab(sheetId,'Documents'), fetchTab(sheetId,'OtherDocs'),
+    fetchTab(sheetId,'TravelTickets'), fetchTab(sheetId,'OtherDocs'),
     fetchTab(sheetId,'Stays'), fetchTab(sheetId,'Places'),
     fetchTab(sheetId,'Personnels'),
   ]);
@@ -81,10 +81,9 @@ const MODES = [
 ];
 
 function buildLegUrl(from, to, mode) {
-  // Extract a query from the Maps URL if available, otherwise use place name
   function pointStr(place) {
+    if (place.lat && place.lng) return `${place.lat},${place.lng}`;
     if (place.mapsUrl) {
-      // Try to extract query from URL: ?q=... or /place/name/
       const qMatch = place.mapsUrl.match(/[?&]q=([^&]+)/);
       if (qMatch) return decodeURIComponent(qMatch[1]);
     }
@@ -97,6 +96,7 @@ function buildFullRouteUrl(places, mode='walking') {
   const pts = places.filter(p => p.name);
   if (pts.length < 2) return null;
   function pointStr(place) {
+    if (place.lat && place.lng) return `${place.lat},${place.lng}`;
     if (place.mapsUrl) {
       const qMatch = place.mapsUrl.match(/[?&]q=([^&]+)/);
       if (qMatch) return decodeURIComponent(qMatch[1]);
@@ -384,7 +384,8 @@ function StayCard({ stay, personnels }) {
       </div>
       {stayPersons.length>0&&<div style={{marginTop:10,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}><span style={{fontSize:11,color:'var(--ink-light)'}}>Staying:</span>{stayPersons.map((name,i)=><span key={i} style={{display:'flex',alignItems:'center',gap:4,fontSize:12,color:'var(--ink-mid)'}}><Avatar name={name} size={18} index={i}/>{name}</span>)}</div>}
       {stay.checkInNotes&&<div style={{marginTop:10,padding:'8px 12px',background:'var(--amber-light)',borderRadius:8,fontSize:12,color:'var(--amber)'}}><strong>Check-in:</strong> {stay.checkInNotes}</div>}
-      {stay.link&&<div style={{marginTop:10}}><DriveBtn link={stay.link} label="View booking"/></div>}
+      {stay.bookingLink&&<div style={{marginTop:10}}><DriveBtn link={stay.bookingLink} label="View booking confirmation"/></div>}
+      {stay.link&&<div style={{marginTop:6}}><DriveBtn link={stay.link} label="View document"/></div>}
       {mapOpen&&<MapModal title={stay.name} subtitle={`${fmt(stay.checkIn)} → ${fmt(stay.checkOut)}`} items={[{id:stay.id,name:stay.name,subtitle:stay.address,badge:stay.type,mapsUrl:stay.mapsUrl,lat:stay.lat,lng:stay.lng,notes:stay.checkInNotes,dotBg:'var(--teal-light)',dotColor:'var(--teal)'}]} onClose={()=>setMapOpen(false)}/>}
     </div>
   );

@@ -81,7 +81,8 @@ export function MapModal({ title, subtitle, items, onClose }) {
 
   function buildEmbedUrl(item) {
     if (!item) return null;
-    // Use the Maps URL to extract a query, or fall back to place name
+    // Prefer coordinates for accurate pin, fall back to URL query or name
+    if (item.lat && item.lng) return `https://maps.google.com/maps?q=${item.lat},${item.lng}&z=15&output=embed`;
     if (item.mapsUrl) {
       const qMatch = item.mapsUrl.match(/[?&]q=([^&]+)/);
       const q = qMatch ? qMatch[1] : encodeURIComponent(item.name);
@@ -95,6 +96,7 @@ export function MapModal({ title, subtitle, items, onClose }) {
     const pts = items.filter(p => p.name || p.mapsUrl);
     if (pts.length === 0) return null;
     function pointStr(p) {
+      if (p.lat && p.lng) return `${p.lat},${p.lng}`;
       if (p.mapsUrl) {
         const qMatch = p.mapsUrl.match(/[?&]q=([^&]+)/);
         if (qMatch) return qMatch[1];

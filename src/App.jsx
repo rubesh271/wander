@@ -966,7 +966,7 @@ function SettingsView({ sheetsId, scriptUrl, onSave, onSetupSheet }) {
                 {testing ? '⏳ Creating tabs…' : setupDone ? '✓ All tabs created!' : '🚀 Auto-create all sheet tabs'}
               </button>
               {setupDone && <div style={{ marginTop:10, padding:'12px 14px', background:'var(--teal-light)', borderRadius:'var(--radius)', fontSize:13, color:'var(--teal)', lineHeight:1.6 }}>
-                ✓ Done! Your sheet now has 7 tabs ready: Trips, Days, Documents, Stays, Places, Personnels, OtherDocs. Everything you add or edit in the app will now appear in your Sheet instantly.
+                ✓ Done! Your sheet now has 7 tabs ready: Trips, Days, TravelTickets, Stays, Places, Personnels, OtherDocs. Everything you add or edit in the app will now appear in your Sheet instantly.
               </div>}
             </>}
 
@@ -983,8 +983,8 @@ function SettingsView({ sheetsId, scriptUrl, onSave, onSetupSheet }) {
               <div style={{ background:'var(--paper-warm)', borderRadius:'var(--radius)', padding:'14px 16px', fontSize:12, color:'var(--ink-mid)', lineHeight:2, marginTop:10 }}>
                 <div><strong>Trips:</strong> id, name, emoji, status, destinations, startDate, endDate, budget, notes</div>
                 <div><strong>Days:</strong> id, tripId, dayNumber, date, title, location, morning, afternoon, evening, transport, notes</div>
-                <div><strong>Documents:</strong> id, tripId, name, type, date, time, ref, fromTo, operator, details, cost, status, belongsTo, link, fileLabel</div>
-                <div><strong>Stays:</strong> id, tripId, name, type, checkIn, checkOut, address, mapsUrl, lat, lng, ref, cost, paid, checkInNotes, extras, belongsTo</div>
+                <div><strong>TravelTickets:</strong> id, tripId, name, type, date, time, ref, fromTo, operator, details, cost, status, belongsTo, link, fileLabel</div>
+                <div><strong>Stays:</strong> id, tripId, name, type, checkIn, checkOut, address, mapsUrl, lat, lng, ref, cost, paid, checkInNotes, extras, belongsTo, bookingLink</div>
                 <div><strong>Places:</strong> id, tripId, dayId, name, time, category, mapsUrl, lat, lng, notes</div>
                 <div><strong>Personnels:</strong> id, tripId, name, role, email, phone</div>
                 <div><strong>OtherDocs:</strong> id, tripId, name, category, ref, issuedBy, expiryDate, belongsTo, notes, link, fileLabel</div>
