@@ -3,6 +3,13 @@ import { MapPin, ExternalLink, ChevronDown, ChevronUp, RefreshCw, Search, Compas
 import { fmt, fmtDay, fmtShort, nights, catStyle } from './utils.js';
 import { MapModal, Avatar, StatusBadge, TypeBadge, AttachmentChips, CategoryBadge } from './components/ui.jsx';
 
+function parseTime(t) {
+  if (!t) return 9999;
+  const m = String(t).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return 9999;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
 // ── CSV ────────────────────────────────────────────────────────────────────
 
 function parseCSV(text) {
@@ -267,7 +274,7 @@ function DayCard({ day, places }) {
   const [open, setOpen] = useState(isToday(day.date));
   const [mapOpen, setMapOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
-  const dayPlaces = places.filter(p=>p.dayId===day.id).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  const dayPlaces = places.filter(p=>p.dayId===day.id).sort((a,b)=>parseTime(a.time)-parseTime(b.time));
   const mapItems = dayPlaces.map(p=>({...p,subtitle:p.time,badge:p.category,dotBg:catStyle(p.category).bg,dotColor:catStyle(p.category).color}));
   const isActiveDay = isToday(day.date);
 
